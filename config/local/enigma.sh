@@ -1,0 +1,1 @@
+export FIGURES_DIR="$HOME/experiments/jacobs/enigma/eda"
