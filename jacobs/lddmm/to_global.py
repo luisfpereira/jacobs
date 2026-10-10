@@ -3,11 +3,12 @@ from functools import partial
 from pathlib import Path
 
 import polpo.utils as putils
-from polpo.datasets.jacobs.lddmm_to_global import prepare_inputs
 from polpo.datasets.jacobs.utils import get_subject_ids
 from polpo.neuroimaging.enigma.naming import get_all_subcortical_structs
 from polpo.workflow.lddmm_to_global import LddmmToGlobal
 from polpo.workflow.task import CompositeTaskRunner, TaskRunner
+
+from .core import prepare_inputs
 
 DEBUG = False
 

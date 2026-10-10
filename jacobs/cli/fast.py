@@ -1,15 +1,11 @@
 from pathlib import Path
 
 import click
-from polpo.datasets.jacobs.plot import update_mpl_params
+
+from jacobs.core import update_mpl_params
 
 
 @click.group()
-def cli():
-    """Jacobs dataset analyses."""
-
-
-@cli.group()
 def fast():
     """Analyses using FAST derivatives."""
 

@@ -29,6 +29,7 @@ def prepare_inputs(subject_ids, data_dir, structs, derivative="fast"):
 
     paths = paths.map_keys(session_to_week)
 
+    # TODO: use core util
     paths = paths.filter_keys(
         lambda subject, week: (not is_pregnancy_subject(subject) or 0 <= week <= 42)
     )

@@ -1,16 +1,10 @@
-"""Plot PCA pairplot matrices for global meshes across subcortical structures."""
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from polpo.datasets.jacobs.lddmm_to_global import find_experiment_dirs
-from polpo.datasets.jacobs.plot import get_subject_colors
 from polpo.ext.sklearn.decomposition import PCA
 from polpo.plot.pyplot import plot_subfigure_grid
 from polpo.plot.seaborn import pairmatrix_legend_handles, plot_pairmatrix
-from polpo.surface_mesh.transform import DeltaTransform
-from polpo.workflow.lddmm_to_global.output import LddmmToGlobalOutput
 from polpo.workflow.task import TaskRunner, task
 
 
@@ -89,25 +83,3 @@ class PCAPairplotsRunner(TaskRunner):
 
         fig.savefig(self.figures_dir / "pairplots")
         plt.close(fig)
-
-
-def prepare_deltas(struct_dir):
-    source = LddmmToGlobalOutput(struct_dir)
-
-    meshes = source.view.global_points.map_values(lambda point: point.as_surface())
-    atlas = source.global_atlas_point.as_surface()
-
-    return meshes.map_values(DeltaTransform(atlas))
-
-
-def make_runner(outputs_dir, figures_dir, n_components=5):
-    experiment_dirs = find_experiment_dirs(outputs_dir, long_name=True)
-
-    deltas = {struct: prepare_deltas(path) for struct, path in experiment_dirs.items()}
-
-    return PCAPairplotsRunner(
-        deltas=deltas,
-        figures_dir=figures_dir,
-        n_components=n_components,
-        colors=get_subject_colors(),
-    )
