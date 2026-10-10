@@ -24,7 +24,7 @@ def make_runner(outputs_dir, figures_dir, n_components=5):
     deltas = {struct: prepare_deltas(path) for struct, path in experiment_dirs.items()}
 
     return PCAPairplotsRunner(
-        deltas=deltas,
+        data=deltas,
         figures_dir=figures_dir,
         n_components=n_components,
         colors=get_subject_colors(),

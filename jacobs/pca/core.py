@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 from polpo.ext.sklearn.decomposition import PCA
 from polpo.plot.pyplot import plot_subfigure_grid
 from polpo.plot.seaborn import pairmatrix_legend_handles, plot_pairmatrix
@@ -39,7 +38,7 @@ class PCAPairplotsRunner(TaskRunner):
 
     def __init__(
         self,
-        deltas,
+        data,
         figures_dir,
         colors,
         n_components=5,
@@ -47,7 +46,7 @@ class PCAPairplotsRunner(TaskRunner):
     ):
         super().__init__(state_dir or figures_dir / ".pca_pairplots")
 
-        self.deltas = deltas
+        self.data = data
         self.figures_dir = figures_dir
         self.n_components = n_components
 
@@ -57,7 +56,7 @@ class PCAPairplotsRunner(TaskRunner):
     def pairplots(self):
         dfs = {
             struct: compute_pca_scores(deltas, self.n_components)
-            for struct, deltas in self.deltas.items()
+            for struct, deltas in self.data.items()
         }
 
         subjects = sorted({subject for df in dfs.values() for subject in df["subject"]})

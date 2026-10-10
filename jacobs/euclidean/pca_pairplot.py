@@ -66,7 +66,7 @@ def make_runner(
     }
 
     return PCAPairplotsRunner(
-        deltas=deltas,
+        data=deltas,
         figures_dir=figures_dir,
         n_components=n_components,
         colors=get_subject_colors(),
