@@ -36,7 +36,16 @@ def register_dataset(dataset):
     return dataset.transform(register)
 
 
-def prepare_inputs(struct, data_dir=None, subject_ids=None):
+def load_registered_dataset(struct, data_dir=None, subject_ids=None):
+    """Load and rigidly register pregnancy-window observations."""
+    paths = load_path_dataset(struct, data_dir, subject_ids)
+    paths = filter_pregnancy_weeks(paths)
+
+    surfaces = paths.map_values(lambda path: Surface(*read_geometry(path)))
+    return register_dataset(surfaces)
+
+
+def load_registered_dataset_with_baselines(struct, data_dir=None, subject_ids=None):
     """Prepare rigidly aligned observation and baseline surface datasets.
 
     Load surfaces, select observations and baseline inputs, and rigidly

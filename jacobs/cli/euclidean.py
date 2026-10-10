@@ -20,17 +20,21 @@ def euclidean():
 @click.option("--subdir/--no-subdir", default=True)
 @click.option("--n-components", type=click.IntRange(min=2), default=5)
 @click.option("--overwrite", is_flag=True)
-def pca_pairplots(figures_dir, subdir, n_components, overwrite):
+@click.option("--vertices/--deltas", default=False)
+def pca_pairplots(figures_dir, subdir, n_components, overwrite, vertices):
     """Generate PCA pairplots across subcortical structures."""
     from jacobs.euclidean.pca_pairplot import make_runner
 
     if subdir:
         figures_dir = figures_dir / "pca"
+        if vertices:
+            figures_dir = figures_dir / "vertices"
 
     update_mpl_params()
 
     runner = make_runner(
         figures_dir=figures_dir,
         n_components=n_components,
+        subtract_baseline=not vertices,
     )
     runner.run(overwrite=overwrite)

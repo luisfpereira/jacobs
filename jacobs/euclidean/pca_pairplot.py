@@ -8,14 +8,18 @@ from polpo.surface_mesh import Surface
 from polpo.surface_mesh.transform import DeltaTransform
 
 from jacobs.core import get_subject_colors
+from jacobs.euclidean.core import (
+    load_registered_dataset,
+    load_registered_dataset_with_baselines,
+)
 from jacobs.pca.core import PCAPairplotsRunner
-
-from .core import prepare_inputs
 
 
 def prepare_deltas(struct, data_dir=None, subject_ids=None):
     """Compute observation deltas relative to subject-specific baselines."""
-    observations, baseline_inputs = prepare_inputs(struct, data_dir, subject_ids)
+    observations, baseline_inputs = load_registered_dataset_with_baselines(
+        struct, data_dir, subject_ids
+    )
 
     deltas = {}
 
@@ -32,15 +36,30 @@ def prepare_deltas(struct, data_dir=None, subject_ids=None):
     return NestedDataset(deltas)
 
 
-def make_runner(figures_dir, data_dir=None, subject_ids=None, n_components=5):
+def prepare_vertices(struct, data_dir=None, subject_ids=None):
+    """Load registered surfaces as flattened vertex coordinates."""
+    observations = load_registered_dataset(struct, data_dir, subject_ids)
+
+    return observations.map_values(lambda mesh: mesh.vertices.reshape(-1))
+
+
+def make_runner(
+    figures_dir,
+    data_dir=None,
+    subject_ids=None,
+    n_components=5,
+    subtract_baseline=True,
+):
     structs = get_all_subcortical_structs(
         only_bilateral=True,
         interleave=True,
     )
     structs = [struct for struct in structs if not struct.endswith("_Accu")]
 
+    prepare_data = prepare_deltas if subtract_baseline else prepare_vertices
+
     deltas = {
-        get_subcortical_struct_long_name(struct): prepare_deltas(
+        get_subcortical_struct_long_name(struct): prepare_data(
             struct, data_dir, subject_ids
         )
         for struct in structs
