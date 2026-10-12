@@ -10,6 +10,7 @@ dependencies = ["click>=8.0"]
 
 [project.scripts]
 jacobs = "jacobs.cli.main:cli"
+jacobs-deformetrica = "jacobs.cli.deformetrica:cli"
 
 [tool.setuptools.packages.find]
 include = ["jacobs*"]

@@ -1,8 +1,6 @@
-from pathlib import Path
-
 import click
 
-from jacobs.core import update_mpl_params
+from . import _options
 
 
 @click.group()
@@ -11,31 +9,27 @@ def enigma():
 
 
 @enigma.command()
-@click.option(
-    "--figures-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    envvar="FIGURES_DIR",
-    required=True,
-)
+@_options.figures_dir
 @click.option("--subdir/--no-subdir", default=True)
 @click.option("--overwrite", is_flag=True)
-def volumes(figures_dir, subdir, overwrite):
+@_options.tasks
+@_options.plotting
+def volumes(figures_dir, subdir, overwrite, tasks):
     """Generate ENIGMA volume figures."""
-
-    from jacobs.volumes.enigma import make_runner
+    from jacobs.core.style import get_subject_colors
+    from jacobs.core.volumes.enigma import load_volumes
+    from jacobs.core.volumes.figures import VolumeFiguresRunner
 
     if subdir:
         figures_dir = figures_dir / "volumes"
 
-    update_mpl_params()
-
-    runner = make_runner(figures_dir)
+    runner = VolumeFiguresRunner(
+        figures_dir,
+        load_volumes,
+        colors=get_subject_colors(),
+    )
 
     runner.run(
         overwrite=overwrite,
-        tasks=(
-            "longitudinal",
-            "trajectory_summary",
-            "trajectory_summary_lr",
-        ),
+        tasks=tasks or None,
     )

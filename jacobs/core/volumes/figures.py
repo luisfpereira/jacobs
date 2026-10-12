@@ -1,4 +1,5 @@
 import logging
+from functools import cached_property
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -81,12 +82,28 @@ def pair_hemispheres(data):
 
 
 class VolumeFiguresRunner(TaskRunner):
-    def __init__(self, figures_dir, volumes, colors, state_dir=None):
+    def __init__(self, figures_dir, load_volumes, colors, state_dir=None):
         super().__init__(state_dir or figures_dir / ".state")
 
         self.figures_dir = figures_dir
-        self.volumes = volumes
         self.colors = colors
+
+        self._load_volumes = load_volumes
+
+    @classmethod
+    def from_volumes(cls, figures_dir, volumes, colors, **kwargs):
+        return cls(figures_dir, lambda: volumes, colors, **kwargs)
+
+    @cached_property
+    def volumes(self):
+        with self.timer("load_volumes"):
+            volumes = self._load_volumes()
+
+        self.logger.info(
+            "Loaded data in %.1fs",
+            self.timer.duration("load_volumes"),
+        )
+        return volumes
 
     @task
     def longitudinal(self):

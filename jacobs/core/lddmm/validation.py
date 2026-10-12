@@ -1,25 +1,9 @@
-import os
-from pathlib import Path
-
 import numpy as np
-from polpo.dataset import MappedView, NestedKeyMap
 from polpo.dataset.plot import plot_nested
-from polpo.datasets.jacobs.lddmm_to_global import find_experiment_dirs
-from polpo.datasets.jacobs.plot import get_subject_colors, update_mpl_params
-from polpo.datasets.jacobs.tabular import get_session_to_week
-from polpo.distmat.plot import plot_dist_comparison
+from polpo.distmat.plot import plot_dist_comparison, plot_distmat
 from polpo.latex import add_subfigures, compile_latex, make_figure_document
-from polpo.neuroimaging.naming import get_subcortical_struct_long_name
 from polpo.plot.pyplot import plot_grid, plot_hists, plot_layers
-from polpo.workflow.lddmm_to_global.distances import (
-    DistanceResults,
-    MultiDistanceResults,
-)
-from polpo.workflow.lddmm_to_global.output import (
-    LddmmToGlobalMultiOutput,
-    LddmmToGlobalOutput,
-)
-from polpo.workflow.task import CompositeTaskRunner, TaskRunner, task
+from polpo.workflow.task import TaskRunner, task
 
 
 def is_intra(key_a, key_b):
@@ -58,8 +42,14 @@ class BaseFiguresRunner(TaskRunner):
         prefix = self.prefix if prefixed else ""
         return self.figures_dir / f"{prefix}{name}.pdf"
 
-    def _plot_grid(self, name, data, plot, *, prefixed=False, **kwargs):
+    def _plot_grid(
+        self, name, data, plot, *, prefixed=False, layout_rect=None, **kwargs
+    ):
         fig, _ = plot_grid(data, plot, **kwargs)
+
+        if layout_rect is not None:
+            fig.tight_layout(rect=layout_rect)
+
         fig.savefig(self._get_figpath(name, prefixed=prefixed))
 
 
@@ -321,115 +311,31 @@ class MetricsFiguresMerger(BaseFiguresRunner):
         compile_latex(text, self.figures_dir / "metrics_combined.pdf")
 
 
-def load_outputs(outputs_dir, structs):
-    experiment_dirs = find_experiment_dirs(outputs_dir)
-    key_to_week = NestedKeyMap.from_inner_key_map(get_session_to_week())
+class DistmatFiguresRunner(BaseFiguresRunner):
+    def __init__(self, figures_dir, distances, prefix=None, state_dir=None):
+        super().__init__(figures_dir, state_dir=state_dir, prefix=prefix)
+        self.distances = distances
 
-    outputs = {}
-
-    for struct in structs:
-        struct_long = get_subcortical_struct_long_name(struct)
-        dirs = [experiment_dirs[f"{side}_{struct}"] for side in ("L", "R")]
-
-        output = LddmmToGlobalMultiOutput([LddmmToGlobalOutput(path) for path in dirs])
-
-        outputs[struct_long] = output.view.with_key_map(key_to_week)
-
-    return outputs
-
-
-def load_distances(outputs, distances_folder):
-    return {
-        struct: MultiDistanceResults(
-            {
-                side: MappedView(
-                    DistanceResults.from_dir(output_.path / distances_folder),
-                    output.key_map.flatten(),
-                )
-                for side, output_ in zip(("L", "R"), output.outputs)
-            }
-        )
-        for struct, output in outputs.items()
-    }
-
-
-if __name__ == "__main__":
-    outputs_dir = Path(os.environ["OUTPUTS_DIR"])
-    figures_dir = Path(os.environ["FIGURES_DIR"]) / "lddmm"
-
-    metrics = {
-        "varifold": ("post_dists/var", "var"),
-        "euclidean": ("post_dists/eucl", "eucl"),
-        # "lddmm": ("post_dists/lddmm", "lddmm"),
-    }
-
-    update_mpl_params()
-
-    structs = ["Thal", "Caud", "Puta", "Pall", "Hipp", "Amyg"]
-
-    outputs = load_outputs(outputs_dir, structs)
-
-    subj_ids = next(iter(outputs.values())).dataset.keys_list()
-    subj_colors = get_subject_colors(subj_ids)
-
-    runners = {
-        "volumes": VolumesFiguresRunner(
-            figures_dir,
-            outputs,
-            subj_colors,
-            subj_id="01",
-            state_dir=figures_dir / ".volumes",
-        )
-    }
-
-    for metric, (distances_folder, short) in metrics.items():
-        distances = load_distances(
-            outputs,
-            distances_folder=distances_folder,
+    def _plot_distmats(self, name, select):
+        self._plot_grid(
+            name,
+            self.distances,
+            plot_distmat,
+            prefixed=True,
+            select=select,
+            show_ticks=False,
+            figsize=(8, 18),
+            layout_rect=(0.04, 0.03, 0.96, 0.98),
         )
 
-        runner = MetricFiguresRunner(
-            figures_dir,
-            distances,
-            prefix=f"{short}_",
-            state_dir=figures_dir / f".{short}",
+    @task
+    def global_dist_matrix(self):
+        self._plot_distmats(
+            "global-dist-matrix", lambda _, item: (item.global_pairwise(),)
         )
 
-        if metric == "lddmm":
-            runner = runner.resolve(
-                tasks=(
-                    "dist_rec",
-                    "dist_atlases",
-                )
-            )
-        else:
-            runner = runner.resolve(
-                exclude_tasks=("dist_rec",),
-            )
-
-        runners[metric] = runner
-
-    runners["merge-volume"] = MetricVolumeFiguresMerger(
-        figures_dir,
-        prefix=metrics["varifold"][1],
-        state_dir=figures_dir / ".metrics_volume_combined",
-    )
-
-    runners["merge-metrics"] = MetricsFiguresMerger(
-        figures_dir,
-        [f"{short}_" for _, short in metrics.values() if short != "lddmm"],
-        state_dir=figures_dir / ".metrics_combined",
-    )
-
-    CompositeTaskRunner(runners, figures_dir).run(
-        overwrite=True,
-        continue_on_error=False,
-        tasks=(
-            # "volumes",
-            "euclidean",
-            "varifold",
-            # "lddmm",
-            # "merge-volume",
-            # "merge-metrics",
-        ),
-    )
+    @task
+    def local_dist_matrix(self):
+        self._plot_distmats(
+            "local-dist-matrix", lambda _, item: (item.local_pairwise(),)
+        )

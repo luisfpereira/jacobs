@@ -1,8 +1,8 @@
-from pathlib import Path
+from functools import partial
 
 import click
 
-from jacobs.core import update_mpl_params
+from . import _options
 
 
 @click.group()
@@ -11,33 +11,186 @@ def lddmm():
 
 
 @lddmm.command()
-@click.option(
-    "--outputs-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    envvar="OUTPUTS_DIR",
-    required=True,
-)
-@click.option(
-    "--figures-dir",
-    type=click.Path(path_type=Path, file_okay=False),
-    envvar="FIGURES_DIR",
-    required=True,
-)
+@_options.outputs_dir
+@_options.figures_dir
 @click.option("--subdir/--no-subdir", default=True)
 @click.option("--n-components", type=click.IntRange(min=2), default=5)
 @click.option("--overwrite", is_flag=True)
+@_options.plotting
 def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
     """Generate PCA pairplots across subcortical structures."""
-    from jacobs.lddmm.pca_pairplot import make_runner
+    from jacobs.core.lddmm.outputs import load_global_deltas
+    from jacobs.core.pca import PCAPairplotsRunner
+    from jacobs.core.style import get_subject_colors
 
     if subdir:
         figures_dir = figures_dir / "pca"
 
-    update_mpl_params()
-
-    runner = make_runner(
-        outputs_dir=outputs_dir,
-        figures_dir=figures_dir,
+    runner = PCAPairplotsRunner(
+        figures_dir,
+        partial(load_global_deltas, outputs_dir),
+        colors=get_subject_colors(),
         n_components=n_components,
     )
     runner.run(overwrite=overwrite)
+
+
+@lddmm.command()
+@_options.outputs_dir
+@click.option(
+    "--metric",
+    "metrics",
+    type=click.Choice(["eucl", "var"]),
+    multiple=True,
+    default=("eucl", "var"),
+    show_default=True,
+)
+@click.option("--overwrite", is_flag=True)
+def post_dists(outputs_dir, metrics, overwrite):
+    """Compute Euclidean and/or varifold distances between global representations."""
+    from polpo.workflow.lddmm_to_global.distances import (
+        EuclideanDistances,
+        PersistentEvaluator,
+        VarifoldDistances,
+    )
+    from polpo.workflow.task import CompositeTaskRunner
+
+    from jacobs.core.lddmm.outputs import find_experiment_dirs
+
+    evaluators = {
+        "eucl": EuclideanDistances,
+        "var": VarifoldDistances,
+    }
+
+    experiment_dirs = find_experiment_dirs(outputs_dir)
+
+    runners = {
+        metric: CompositeTaskRunner(
+            {
+                struct: PersistentEvaluator(
+                    Evaluator(experiment_dir),
+                    experiment_dir / "post_dists" / metric,
+                )
+                for struct, experiment_dir in experiment_dirs.items()
+            },
+            state_dir=outputs_dir / ".post_dists" / metric,
+        )
+        for metric, Evaluator in evaluators.items()
+    }
+
+    runner = CompositeTaskRunner(runners, state_dir=outputs_dir / ".post_dists")
+    runner.run(tasks=metrics or None, overwrite=overwrite)
+
+
+@lddmm.command()
+@_options.outputs_dir
+@_options.figures_dir
+@click.option("--subdir/--no-subdir", default=True)
+@click.option(
+    "--task",
+    "tasks",
+    multiple=True,
+    help=(
+        "Figure set to generate: volumes, euclidean, varifold, "
+        "lddmm, merge-volume, merge-metrics. Defaults to all."
+    ),
+)
+@click.option("--overwrite", is_flag=True)
+@_options.plotting
+def validation_figures(outputs_dir, figures_dir, subdir, tasks, overwrite):
+    """Generate validation figures for LDDMM-to-global outputs."""
+    from polpo.workflow.task import CompositeTaskRunner
+
+    from jacobs.core.lddmm.outputs import load_multi_distances, load_multi_outputs
+    from jacobs.core.lddmm.validation import (
+        MetricFiguresRunner,
+        MetricsFiguresMerger,
+        MetricVolumeFiguresMerger,
+        VolumesFiguresRunner,
+    )
+    from jacobs.core.style import get_subject_colors
+
+    if subdir:
+        figures_dir = figures_dir / "lddmm"
+
+    metrics = {"euclidean": "eucl", "varifold": "var", "lddmm": "lddmm"}
+    structs = ["Thal", "Caud", "Puta", "Pall", "Hipp", "Amyg"]
+
+    outputs = load_multi_outputs(outputs_dir, structs)
+    subject_ids = next(iter(outputs.values())).dataset.keys_list()
+
+    runners = {
+        "volumes": VolumesFiguresRunner(
+            figures_dir,
+            outputs,
+            get_subject_colors(subject_ids),
+            subj_id="01",
+            state_dir=figures_dir / ".volumes",
+        ),
+    }
+
+    for name, metric in metrics.items():
+        runner = MetricFiguresRunner(
+            figures_dir,
+            load_multi_distances(outputs, f"post_dists/{metric}"),
+            prefix=f"{metric}_",
+            state_dir=figures_dir / f".{metric}",
+        )
+
+        if metric == "lddmm":
+            runners[name] = runner.resolve(tasks=("dist_rec", "dist_atlases"))
+        else:
+            runners[name] = runner.resolve(exclude_tasks=("dist_rec",))
+
+    runners["merge-volume"] = MetricVolumeFiguresMerger(
+        figures_dir,
+        prefix="var",
+        state_dir=figures_dir / ".metrics_volume_combined",
+    )
+    runners["merge-metrics"] = MetricsFiguresMerger(
+        figures_dir,
+        ["eucl_", "var_"],
+        state_dir=figures_dir / ".metrics_combined",
+    )
+
+    CompositeTaskRunner(runners, figures_dir).run(
+        tasks=tasks or None,
+        overwrite=overwrite,
+        continue_on_error=False,
+    )
+
+
+@lddmm.command()
+@_options.outputs_dir
+@_options.figures_dir
+@click.option(
+    "--metric",
+    "metrics",
+    multiple=True,
+    help="eucl, var. Defaults to all.",
+)
+@click.option("--overwrite", is_flag=True)
+@_options.plotting
+def distmat_figures(outputs_dir, figures_dir, metrics, overwrite):
+    """Plot local and global distance matrices per experiment."""
+    from polpo.workflow.task import CompositeTaskRunner
+
+    from jacobs.core.lddmm.outputs import load_distances, load_outputs
+    from jacobs.core.lddmm.validation import DistmatFiguresRunner
+
+    figures_dir = figures_dir / "lddmm"
+    outputs = load_outputs(outputs_dir)
+
+    runners = {
+        metric: DistmatFiguresRunner(
+            figures_dir,
+            load_distances(outputs, metric),
+            prefix=f"{metric}_",
+            state_dir=figures_dir / f".{metric}_distmats",
+        )
+        for metric in ("eucl", "var")
+    }
+
+    CompositeTaskRunner(runners, figures_dir).run(
+        tasks=metrics or None, overwrite=overwrite, continue_on_error=False
+    )

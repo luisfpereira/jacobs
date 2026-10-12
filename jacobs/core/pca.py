@@ -1,3 +1,5 @@
+from functools import cached_property
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -38,19 +40,38 @@ class PCAPairplotsRunner(TaskRunner):
 
     def __init__(
         self,
-        data,
         figures_dir,
+        load_data,
         colors,
         n_components=5,
+        prefix=None,
         state_dir=None,
     ):
-        super().__init__(state_dir or figures_dir / ".pca_pairplots")
+        self.prefix = prefix
+        super().__init__(state_dir or figures_dir / f".{self._name('pca_pairplots')}")
 
-        self.data = data
         self.figures_dir = figures_dir
-        self.n_components = n_components
-
         self.colors = colors
+        self.n_components = n_components
+        self._load_data = load_data
+
+    def _name(self, name):
+        return f"{self.prefix}_{name}" if self.prefix else name
+
+    @classmethod
+    def from_data(cls, figures_dir, data, colors, **kwargs):
+        return cls(figures_dir, lambda: data, colors, **kwargs)
+
+    @cached_property
+    def data(self):
+        with self.timer("load_data"):
+            data = self._load_data()
+
+        self.logger.info(
+            "Loaded data in %.1fs",
+            self.timer.duration("load_data"),
+        )
+        return data
 
     @task
     def pairplots(self):
@@ -80,5 +101,5 @@ class PCAPairplotsRunner(TaskRunner):
             frameon=False,
         )
 
-        fig.savefig(self.figures_dir / "pairplots")
+        fig.savefig(self.figures_dir / self._name("pairplots"))
         plt.close(fig)
