@@ -194,3 +194,55 @@ def distmat_figures(outputs_dir, figures_dir, metrics, overwrite):
     CompositeTaskRunner(runners, figures_dir).run(
         tasks=metrics or None, overwrite=overwrite, continue_on_error=False
     )
+
+
+@lddmm.command()
+@_options.outputs_dir
+@click.option("--overwrite", is_flag=True)
+def bcv_rank_selection(outputs_dir, overwrite):
+    """Select PCA rank per structure via bi-cross-validation on global deltas."""
+    from functools import partial
+
+    from polpo.bcv.mesh import GroupedMeshRankSelection
+    from polpo.workflow.task import CompositeTaskRunner, TaskRunner
+
+    from jacobs.core.bcv import select_rank
+    from jacobs.core.lddmm.outputs import find_experiment_dirs
+
+    runners = {
+        struct: TaskRunner.from_callable(
+            partial(
+                select_rank,
+                struct,
+                struct_dir,
+                GroupedMeshRankSelection(center=True),
+                results_dir=struct_dir / "rank_selection",
+            ),
+            state_dir=struct_dir / "rank_selection",
+            name="select_rank",
+        )
+        for struct, struct_dir in find_experiment_dirs(outputs_dir).items()
+    }
+
+    runner = CompositeTaskRunner(
+        runners,
+        state_dir=outputs_dir / ".rank_selection",
+    )
+    runner.run(overwrite=overwrite)
+
+
+@lddmm.command()
+@_options.outputs_dir
+@_options.figures_dir
+@click.option("--overwrite", is_flag=True)
+@_options.plotting
+def bcv_rank_selection_figures(outputs_dir, figures_dir, overwrite):
+    """Plot rank-selection errors per structure."""
+    from functools import partial
+
+    from jacobs.core.bcv import RankSelectionFiguresRunner, load_rank_selection_results
+
+    RankSelectionFiguresRunner(
+        figures_dir / "rank_selection",
+        partial(load_rank_selection_results, outputs_dir),
+    ).run(overwrite=overwrite)
