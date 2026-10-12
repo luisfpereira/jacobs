@@ -117,10 +117,10 @@ def load_outputs(outputs_dir, data_dir=None):
     }
 
 
-def load_distances(outputs, metric):
+def load_distances(outputs, distances_folder):
     return {
         name: MappedView(
-            DistanceResults.from_dir(output.path / "post_dists" / metric),
+            DistanceResults.from_dir(output.path / distances_folder),
             output.key_map.flatten(),
         )
         for name, output in outputs.items()

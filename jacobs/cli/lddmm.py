@@ -24,7 +24,7 @@ def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
     from jacobs.core.style import get_subject_colors
 
     if subdir:
-        figures_dir = figures_dir / "pca"
+        figures_dir = figures_dir / f"pca_{n_components}"
 
     runner = PCAPairplotsRunner(
         figures_dir,
@@ -91,7 +91,7 @@ def post_dists(outputs_dir, metrics, overwrite):
     "tasks",
     multiple=True,
     help=(
-        "Figure set to generate: volumes, euclidean, varifold, "
+        "Figure set to generate: volumes, eucl, var, "
         "lddmm, merge-volume, merge-metrics. Defaults to all."
     ),
 )
@@ -113,7 +113,7 @@ def validation_figures(outputs_dir, figures_dir, subdir, tasks, overwrite):
     if subdir:
         figures_dir = figures_dir / "lddmm"
 
-    metrics = {"euclidean": "eucl", "varifold": "var", "lddmm": "lddmm"}
+    metrics = {"eucl": "eucl", "var": "var", "lddmm": "lddmm"}
     structs = ["Thal", "Caud", "Puta", "Pall", "Hipp", "Amyg"]
 
     outputs = load_multi_outputs(outputs_dir, structs)
@@ -133,7 +133,7 @@ def validation_figures(outputs_dir, figures_dir, subdir, tasks, overwrite):
         runner = MetricFiguresRunner(
             figures_dir,
             load_multi_distances(outputs, f"post_dists/{metric}"),
-            prefix=f"{metric}_",
+            prefix=metric,
             state_dir=figures_dir / f".{metric}",
         )
 
@@ -184,8 +184,8 @@ def distmat_figures(outputs_dir, figures_dir, metrics, overwrite):
     runners = {
         metric: DistmatFiguresRunner(
             figures_dir,
-            load_distances(outputs, metric),
-            prefix=f"{metric}_",
+            load_distances(outputs, f"post_dists/{metric}"),
+            prefix=metric,
             state_dir=figures_dir / f".{metric}_distmats",
         )
         for metric in ("eucl", "var")

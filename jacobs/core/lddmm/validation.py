@@ -39,7 +39,7 @@ class BaseFiguresRunner(TaskRunner):
         self.prefix = prefix
 
     def _get_figpath(self, name, prefixed=False):
-        prefix = self.prefix if prefixed else ""
+        prefix = f"{self.prefix}_" if prefixed else ""
         return self.figures_dir / f"{prefix}{name}.pdf"
 
     def _plot_grid(

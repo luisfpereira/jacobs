@@ -1,15 +1,25 @@
 import click
 
+from jacobs.core.logging import configure_logging
+
 from . import _options
 
 
 @click.group()
-@_options.log_level
+@click.option(
+    "--log-level",
+    type=click.Choice(
+        ["DEBUG", "INFO", "WARNING", "ERROR"],
+        case_sensitive=False,
+    ),
+    default="INFO",
+    envvar="JACOBS_LOG_LEVEL",
+    show_default=True,
+    show_envvar=True,
+)
 def cli(log_level):
     """Jacobs analyses requiring the Deformetrica environment."""
-    from jacobs.core.log import configure_logging
-
-    configure_logging(log_level)
+    configure_logging(log_level.upper())
 
 
 @cli.command()
@@ -57,7 +67,7 @@ def post_dists(outputs_dir, overwrite):
     )
     from polpo.workflow.task import CompositeTaskRunner
 
-    from jacobs.core.lddmm import find_experiment_dirs
+    from jacobs.core.lddmm.outputs import find_experiment_dirs
 
     tasks = (
         "local_reconstruction_error",
