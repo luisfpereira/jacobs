@@ -37,6 +37,36 @@ def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
 
 @lddmm.command()
 @_options.outputs_dir
+@click.option("--overwrite", is_flag=True)
+def pca_reconstruction(outputs_dir, overwrite):
+    """Evaluate PCA reconstruction error across component counts per structure."""
+    from polpo.workflow.task import CompositeTaskRunner
+
+    from jacobs.core.lddmm.outputs import (
+        find_experiment_dirs,
+        load_reconstruction_inputs,
+    )
+    from jacobs.core.pca import PCAReconstructionEvaluator
+
+    ks = [1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 60, 80]
+
+    runners = {
+        struct: PCAReconstructionEvaluator(
+            struct_dir / "pca_reconstruction_check",
+            *load_reconstruction_inputs(struct_dir),
+            ks=ks,
+        )
+        for struct, struct_dir in find_experiment_dirs(outputs_dir).items()
+    }
+
+    runner = CompositeTaskRunner(
+        runners, state_dir=outputs_dir / ".pca_reconstruction_check"
+    )
+    runner.run(overwrite=overwrite)
+
+
+@lddmm.command()
+@_options.outputs_dir
 @click.option(
     "--metric",
     "metrics",

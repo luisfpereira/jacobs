@@ -125,3 +125,18 @@ def load_distances(outputs, distances_folder):
         )
         for name, output in outputs.items()
     }
+
+
+def load_reconstruction_inputs(struct_dir):
+    """Load global meshes, the atlas delta transform and metrics for one experiment."""
+    output = LddmmToGlobalOutput(struct_dir)
+
+    atlas = output.global_atlas.template.as_surface()
+    meshes = output.view.global_points.map_values(lambda point: point.as_surface())
+
+    metrics = {
+        "squared_euclidean": output.instantiate_euclidean_metric().squared_dist,
+        "squared_varifold": output.instantiate_varifold_metric().squared_dist,
+    }
+
+    return meshes.flatten(), DeltaTransform(atlas), metrics
