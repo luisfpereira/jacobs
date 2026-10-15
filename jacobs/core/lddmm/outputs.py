@@ -1,3 +1,4 @@
+import numpy as np
 from polpo.dataset import MappedView
 from polpo.neuroimaging.naming import (
     get_all_subcortical_structs,
@@ -132,3 +133,21 @@ def load_global_meshes(output):
 def load_global_atlas(output):
     """Load the global atlas as a surface."""
     return output.global_atlas.template.as_surface()
+
+
+def load_atlas_rms_distance(struct_dir, metric="var"):
+    """Load the RMS distance from global meshes to the global atlas."""
+    results = DistanceResults.from_dir(struct_dir / "post_dists" / metric)
+    return results.global_atlas_distance().apply(
+        lambda x: np.sqrt((np.stack(x) ** 2).mean())
+    )
+
+
+def load_atlas_rms_distances(outputs_dir):
+    """Load the RMS distance to the global atlas, keyed by long structure name."""
+    return {
+        struct: load_atlas_rms_distance(struct_dir)
+        for struct, struct_dir in find_experiment_dirs(
+            outputs_dir, long_name=True
+        ).items()
+    }

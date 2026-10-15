@@ -26,7 +26,7 @@ def euclidean():
 def pca_pairplots(figures_dir, subdir, n_components, overwrite, features):
     """Generate PCA pairplots for baseline deltas and/or raw vertices."""
     from jacobs.core.euclidean import load_features
-    from jacobs.core.pca import PCAPairplotsRunner
+    from jacobs.core.pca.plot import PCAPairplotsRunner
     from jacobs.core.style import get_subject_colors
 
     if subdir:

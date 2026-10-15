@@ -20,7 +20,7 @@ def pca():
 def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
     """Generate PCA pairplots across subcortical structures."""
     from jacobs.core.lddmm.outputs import load_global_deltas_by_struct
-    from jacobs.core.pca import PCAPairplotsRunner
+    from jacobs.core.pca.plot import PCAPairplotsRunner
     from jacobs.core.style import get_subject_colors
 
     if subdir:
@@ -81,7 +81,7 @@ def pca_reconstruction_eval(outputs_dir, overwrite):
 def pca_reconstruction_eval_figures(outputs_dir, figures_dir, overwrite):
     """Plot PCA reconstruction errors, explained variance and BCV rank."""
     from jacobs.core.lddmm.pca import load_reconstruction_summaries
-    from jacobs.core.pca import PCAReconstructionFiguresRunner
+    from jacobs.core.pca.plot import PCAReconstructionFiguresRunner
 
     PCAReconstructionFiguresRunner(
         figures_dir / "pca" / "reconstruction_eval",
