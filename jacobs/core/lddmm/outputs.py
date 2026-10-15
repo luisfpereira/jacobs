@@ -126,9 +126,7 @@ def load_distances(outputs, distances_folder):
 
 def load_global_meshes(output):
     """Load global meshes as surfaces, flattened over subject-session keys."""
-    return output.view.global_points.map_values(
-        lambda point: point.as_surface()
-    ).flatten()
+    return output.view.global_points.map_values(lambda point: point.as_surface())
 
 
 def load_global_atlas(output):

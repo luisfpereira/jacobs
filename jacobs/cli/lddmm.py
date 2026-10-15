@@ -75,6 +75,25 @@ def pca_reconstruction_eval(outputs_dir, overwrite):
 
 @lddmm.command()
 @_options.outputs_dir
+@_options.figures_dir
+@click.option("--overwrite", is_flag=True)
+@_options.plotting
+def pca_reconstruction_eval_figures(outputs_dir, figures_dir, overwrite):
+    """Plot PCA reconstruction errors, explained variance and BCV rank."""
+    from jacobs.core.lddmm.pca import load_reconstruction_summaries
+    from jacobs.core.pca import PCAReconstructionFiguresRunner
+
+    PCAReconstructionFiguresRunner(
+        figures_dir / "pca" / "reconstruction_eval",
+        partial(load_reconstruction_summaries, outputs_dir),
+    ).run(
+        overwrite=overwrite,
+        raise_on_error=True,
+    )
+
+
+@lddmm.command()
+@_options.outputs_dir
 @click.option(
     "--metric",
     "metrics",
@@ -269,12 +288,11 @@ def bcv_rank_selection(outputs_dir, overwrite):
 @_options.plotting
 def bcv_rank_selection_figures(outputs_dir, figures_dir, overwrite):
     """Plot rank-selection errors per structure."""
-    from functools import partial
-
-    from jacobs.core.bcv import RankSelectionFiguresRunner, load_rank_selection_results
+    from jacobs.core.bcv import RankSelectionFiguresRunner
+    from jacobs.core.lddmm.bcv import load_rank_selection_results
 
     RankSelectionFiguresRunner(
-        figures_dir / "rank_selection",
+        figures_dir / "bcv" / "rank_selection",
         partial(load_rank_selection_results, outputs_dir),
     ).run(overwrite=overwrite)
 
