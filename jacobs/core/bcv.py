@@ -1,39 +1,24 @@
 from functools import cached_property
 
-import numpy as np
 from polpo.bcv.mesh import GroupedMeshRankSelectionResult
 from polpo.bcv.plot import plot_rank_errors_band
-from polpo.neuroimaging.enigma.mesh import load_template
 from polpo.plot.pyplot import plot_grid
-from polpo.workflow.lddmm_to_global.output import LddmmToGlobalOutput
 from polpo.workflow.task import TaskRunner, task
 
-from jacobs.core.lddmm.outputs import find_experiment_dirs
+
+def get_rank_selection_dir(base_dir):
+    return base_dir / "bcv" / "rank_selection"
 
 
-def load_rank_selection_inputs(struct, struct_dir):
-    """Load template faces and flattened global deltas for one structure."""
-    output = LddmmToGlobalOutput(struct_dir)
-    deltas = output.view.global_deltas.map_values(
-        lambda delta: np.asarray(delta).flatten()
-    )
-    return load_template(struct).faces, deltas
+def get_reconstruction_eval_dir(base_dir):
+    return base_dir / "bcv" / "reconstruction_eval"
 
 
-def select_rank(struct, struct_dir, selector, results_dir):
-    """Fit a rank selector on one structure's global deltas and save the result."""
-    faces, deltas = load_rank_selection_inputs(struct, struct_dir)
-    selector.fit(faces, deltas).result_.to_dir(results_dir)
-
-
-def load_rank_selection_results(outputs_dir):
-    """Load rank-selection results per experiment, keyed by long structure name."""
-    return {
-        struct: GroupedMeshRankSelectionResult.from_dir(struct_dir / "rank_selection")
-        for struct, struct_dir in find_experiment_dirs(
-            outputs_dir, long_name=True
-        ).items()
-    }
+def load_selected_rank(base_dir):
+    """Load the BCV-selected rank for one experiment."""
+    return GroupedMeshRankSelectionResult.from_dir(
+        get_rank_selection_dir(base_dir)
+    ).rank
 
 
 def plot_rank_selection(result, ax=None):

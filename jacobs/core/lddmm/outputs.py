@@ -57,23 +57,20 @@ def find_experiment_dirs(outputs_dir, long_name=False, interleave=True):
     return dict(zip(structs, dirs))
 
 
-def load_struct_global_deltas(struct_dir):
-    """Load global meshes as deltas from the global atlas."""
-    output = LddmmToGlobalOutput(struct_dir)
-
-    meshes = output.view.global_points.map_values(lambda point: point.as_surface())
-    atlas = output.global_atlas_point.as_surface()
-
-    return meshes.map_values(DeltaTransform(atlas))
+def load_global_deltas(output):
+    """Load global meshes as flattened deltas from the global atlas."""
+    return load_global_meshes(output).map_values(
+        DeltaTransform(load_global_atlas(output))
+    )
 
 
-def load_global_deltas(outputs_dir):
-    """Load per-structure global deltas for all experiments in outputs_dir."""
-    experiment_dirs = find_experiment_dirs(outputs_dir, long_name=True)
-
+def load_global_deltas_by_struct(outputs_dir):
+    """Load global deltas for every experiment, keyed by long structure name."""
     return {
-        struct: load_struct_global_deltas(struct_dir)
-        for struct, struct_dir in experiment_dirs.items()
+        struct: load_global_deltas(LddmmToGlobalOutput(struct_dir))
+        for struct, struct_dir in find_experiment_dirs(
+            outputs_dir, long_name=True
+        ).items()
     }
 
 
@@ -127,16 +124,13 @@ def load_distances(outputs, distances_folder):
     }
 
 
-def load_reconstruction_inputs(struct_dir):
-    """Load global meshes, the atlas delta transform and metrics for one experiment."""
-    output = LddmmToGlobalOutput(struct_dir)
+def load_global_meshes(output):
+    """Load global meshes as surfaces, flattened over subject-session keys."""
+    return output.view.global_points.map_values(
+        lambda point: point.as_surface()
+    ).flatten()
 
-    atlas = output.global_atlas.template.as_surface()
-    meshes = output.view.global_points.map_values(lambda point: point.as_surface())
 
-    metrics = {
-        "squared_euclidean": output.instantiate_euclidean_metric().squared_dist,
-        "squared_varifold": output.instantiate_varifold_metric().squared_dist,
-    }
-
-    return meshes.flatten(), DeltaTransform(atlas), metrics
+def load_global_atlas(output):
+    """Load the global atlas as a surface."""
+    return output.global_atlas.template.as_surface()

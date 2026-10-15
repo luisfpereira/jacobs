@@ -19,7 +19,7 @@ def lddmm():
 @_options.plotting
 def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
     """Generate PCA pairplots across subcortical structures."""
-    from jacobs.core.lddmm.outputs import load_global_deltas
+    from jacobs.core.lddmm.outputs import load_global_deltas_by_struct
     from jacobs.core.pca import PCAPairplotsRunner
     from jacobs.core.style import get_subject_colors
 
@@ -28,7 +28,7 @@ def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
 
     runner = PCAPairplotsRunner(
         figures_dir,
-        partial(load_global_deltas, outputs_dir),
+        partial(load_global_deltas_by_struct, outputs_dir),
         colors=get_subject_colors(),
         n_components=n_components,
     )
@@ -38,31 +38,39 @@ def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
 @lddmm.command()
 @_options.outputs_dir
 @click.option("--overwrite", is_flag=True)
-def pca_reconstruction(outputs_dir, overwrite):
-    """Evaluate PCA reconstruction error across component counts per structure."""
+def pca_reconstruction_eval(outputs_dir, overwrite):
+    """Evaluate PCA reconstruction error across a sweep of component counts."""
+    from polpo.surface_mesh.transform import DeltaTransform
+    from polpo.workflow.lddmm_to_global.output import LddmmToGlobalOutput
     from polpo.workflow.task import CompositeTaskRunner
 
     from jacobs.core.lddmm.outputs import (
         find_experiment_dirs,
-        load_reconstruction_inputs,
+        load_global_atlas,
+        load_global_meshes,
     )
     from jacobs.core.pca import PCAReconstructionEvaluator
 
     ks = [1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 60, 80]
 
-    runners = {
-        struct: PCAReconstructionEvaluator(
-            struct_dir / "pca_reconstruction_check",
-            *load_reconstruction_inputs(struct_dir),
+    runners = {}
+    for struct, struct_dir in find_experiment_dirs(outputs_dir).items():
+        output = LddmmToGlobalOutput(struct_dir)
+
+        runners[struct] = PCAReconstructionEvaluator(
+            struct_dir / "pca" / "reconstruction_eval",
+            load_global_meshes(output).flatten(),
+            DeltaTransform(load_global_atlas(output)),
+            metrics={
+                "squared_euclidean": output.instantiate_euclidean_metric().squared_dist,
+                "squared_varifold": output.instantiate_varifold_metric().squared_dist,
+            },
             ks=ks,
         )
-        for struct, struct_dir in find_experiment_dirs(outputs_dir).items()
-    }
 
-    runner = CompositeTaskRunner(
-        runners, state_dir=outputs_dir / ".pca_reconstruction_check"
-    )
-    runner.run(overwrite=overwrite)
+    CompositeTaskRunner(
+        runners, state_dir=outputs_dir / ".pca" / "reconstruction_eval"
+    ).run(overwrite=overwrite)
 
 
 @lddmm.command()
@@ -233,30 +241,23 @@ def bcv_rank_selection(outputs_dir, overwrite):
     """Select PCA rank per structure via bi-cross-validation on global deltas."""
     from functools import partial
 
-    from polpo.bcv.mesh import GroupedMeshRankSelection
     from polpo.workflow.task import CompositeTaskRunner, TaskRunner
 
-    from jacobs.core.bcv import select_rank
+    from jacobs.core.bcv import get_rank_selection_dir
+    from jacobs.core.lddmm.bcv import select_rank
     from jacobs.core.lddmm.outputs import find_experiment_dirs
 
     runners = {
         struct: TaskRunner.from_callable(
-            partial(
-                select_rank,
-                struct,
-                struct_dir,
-                GroupedMeshRankSelection(center=True),
-                results_dir=struct_dir / "rank_selection",
-            ),
-            state_dir=struct_dir / "rank_selection",
+            partial(select_rank, struct_dir),
+            state_dir=get_rank_selection_dir(struct_dir),
             name="select_rank",
         )
         for struct, struct_dir in find_experiment_dirs(outputs_dir).items()
     }
-
     runner = CompositeTaskRunner(
         runners,
-        state_dir=outputs_dir / ".rank_selection",
+        state_dir=outputs_dir / ".bcv" / "rank_selection",
     )
     runner.run(overwrite=overwrite)
 
@@ -275,4 +276,40 @@ def bcv_rank_selection_figures(outputs_dir, figures_dir, overwrite):
     RankSelectionFiguresRunner(
         figures_dir / "rank_selection",
         partial(load_rank_selection_results, outputs_dir),
+    ).run(overwrite=overwrite)
+
+
+@lddmm.command()
+@_options.outputs_dir
+@click.option("--overwrite", is_flag=True)
+def bcv_reconstruction_eval(outputs_dir, overwrite):
+    """Evaluate PCA reconstruction error at each structure's BCV-selected rank."""
+    from polpo.surface_mesh.transform import DeltaTransform
+    from polpo.workflow.lddmm_to_global.output import LddmmToGlobalOutput
+    from polpo.workflow.task import CompositeTaskRunner
+
+    from jacobs.core.bcv import get_reconstruction_eval_dir, load_selected_rank
+    from jacobs.core.lddmm.outputs import (
+        find_experiment_dirs,
+        load_global_atlas,
+        load_global_meshes,
+    )
+    from jacobs.core.pca import PCAReconstructionEvaluator
+
+    runners = {}
+    for struct, struct_dir in find_experiment_dirs(outputs_dir).items():
+        output = LddmmToGlobalOutput(struct_dir)
+
+        runners[struct] = PCAReconstructionEvaluator(
+            get_reconstruction_eval_dir(struct_dir),
+            load_global_meshes(output).flatten(),
+            DeltaTransform(load_global_atlas(output)),
+            metrics={
+                "squared_varifold": output.instantiate_varifold_metric().squared_dist,
+            },
+            ks=[load_selected_rank(struct_dir)],
+        )
+
+    CompositeTaskRunner(
+        runners, state_dir=outputs_dir / ".bcv" / "reconstruction_eval"
     ).run(overwrite=overwrite)

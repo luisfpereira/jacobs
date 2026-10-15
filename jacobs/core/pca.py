@@ -3,9 +3,8 @@ from functools import cached_property
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from polpo.ext.numpy.io import save_indexed_array
+from polpo.ext.numpy.io import save_indexed_arrays
 from polpo.ext.sklearn.decomposition import PCA, TruncatedPCA
-from polpo.ext.sklearn.io import load_estimator, save_estimator
 from polpo.plot.pyplot import plot_subfigure_grid
 from polpo.plot.seaborn import pairmatrix_legend_handles, plot_pairmatrix
 from polpo.transform import CompositeTransform
@@ -132,7 +131,7 @@ class PCAReconstructionEvaluator(TaskRunner):
     ks : array-like
         Numbers of principal components used for reconstruction.
     results_dir : path-like
-        Directory where fitted estimators and evaluation results are stored.
+        Directory where evaluation results are stored.
     state_dir : path-like
         Directory where task execution state is stored. If ``None``,
         ``results_dir`` is used.
@@ -166,19 +165,19 @@ class PCAReconstructionEvaluator(TaskRunner):
         self.ks = ks
         self.results_dir = results_dir
 
-    @property
-    def pca_path(self):
-        return self.results_dir / "pca.joblib"
-
-    @task
-    def fit(self):
+    @cached_property
+    def pca(self):
         X = self.transform(self.dataset.values_list())
 
-        pca = PCA(
-            n_components=int(np.max(self.ks)),
-        ).fit(X)
+        pca = PCA(n_components=int(np.max(self.ks))).fit(X)
+        return pca
 
-        save_estimator(self.pca_path, pca)
+    def _reconstruct(self, meshes, k):
+        """Reconstruct meshes from the first k principal components."""
+        pca_k = TruncatedPCA.from_fitted(self.pca, n_components=k)
+        transform = CompositeTransform([self.transform, pca_k])
+
+        return transform.inverse(transform(meshes))
 
     @task_family("metrics")
     def _run_metric(self, name, metric):
@@ -192,33 +191,19 @@ class PCAReconstructionEvaluator(TaskRunner):
             Function measuring dissimilarity between an original and a
             reconstructed mesh.
         """
-        pca = load_estimator(self.pca_path)
-
         meshes = self.dataset.values_list()
 
-        dissimilarities = []
-
-        for k in self.ks:
-            pca_k = TruncatedPCA.from_fitted(pca, n_components=k)
-
-            transform = CompositeTransform([self.transform, pca_k])
-
-            rec_meshes = transform.inverse(transform(meshes))
-
-            dissimilarities.append(
+        dissimilarities = {
+            str(k): np.array(
                 [
-                    metric(mesh, rec_mesh)
-                    for mesh, rec_mesh in zip(
-                        meshes,
-                        rec_meshes,
-                    )
+                    metric(mesh, rec)
+                    for mesh, rec in zip(meshes, self._reconstruct(meshes, k))
                 ]
             )
+            for k in self.ks
+        }
 
-        # (n_meshes, n_ks), so keys index axis 0
-        dissimilarities = np.asarray(dissimilarities).T
-
-        save_indexed_array(
+        save_indexed_arrays(
             self.results_dir / f"{name}.npz",
             keys=self.dataset.keys_list(),
             data=dissimilarities,
