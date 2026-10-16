@@ -1,5 +1,6 @@
 from functools import cached_property
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import to_rgba
@@ -109,31 +110,38 @@ class ReconstructionEvalFiguresRunner(TaskRunner):
         offsets = {"Left": -0.2, "Right": 0.2}
         pairs = group_by_side(data)
 
-        fig, ax = plt.subplots(figsize=(10, 4))
+        with mpl.rc_context({"font.size": 14}):
+            fig, ax = plt.subplots(figsize=(10, 4))
 
-        for side in ("Left", "Right"):
-            plot_side(
-                ax,
-                [i + offsets[side] for i in range(len(pairs))],
-                [pair[side][1] for pair in pairs.values()],
-                to_rgba(colors[side], alpha=0.5),
-                side,
+            for side in ("Left", "Right"):
+                plot_side(
+                    ax,
+                    [i + offsets[side] for i in range(len(pairs))],
+                    [pair[side][1] for pair in pairs.values()],
+                    to_rgba(colors[side], alpha=0.5),
+                    side,
+                )
+
+            if reference is not None:
+                ax.axhline(reference, color="gray", linestyle=":")
+
+            labels = [
+                f"{name_}\n(ranks {pair['Left'][0]} / {pair['Right'][0]})"
+                for name_, pair in pairs.items()
+            ]
+            ax.set_xticks(
+                range(len(pairs)),
+                labels,
+                rotation=20,
+                ha="right",
+                rotation_mode="anchor",
             )
+            ax.set_ylabel(ylabel)
+            ax.legend()
 
-        if reference is not None:
-            ax.axhline(reference, color="gray", linestyle=":")
-
-        labels = [
-            f"{name_}\n(ranks {pair['Left'][0]} / {pair['Right'][0]})"
-            for name_, pair in pairs.items()
-        ]
-        ax.set_xticks(range(len(pairs)), labels)
-        ax.set_ylabel(ylabel)
-        ax.legend()
-
-        fig.tight_layout()
-        fig.savefig(self.figures_dir / name)
-        plt.close(fig)
+            fig.tight_layout()
+            fig.savefig(self.figures_dir / name)
+            plt.close(fig)
 
     @staticmethod
     def _boxes(ax, positions, values, color, side):
@@ -155,7 +163,7 @@ class ReconstructionEvalFiguresRunner(TaskRunner):
     @task
     def plot_errors(self):
         self._plot_bilateral(
-            self.distances, self._boxes, "Reconstruction error (varifold)", "errors"
+            self.distances, self._boxes, "Reconstruction error\n(varifold)", "errors"
         )
 
     @task
@@ -163,7 +171,7 @@ class ReconstructionEvalFiguresRunner(TaskRunner):
         self._plot_bilateral(
             self.normalized_distances,
             self._boxes,
-            "Reconstruction error / atlas RMS distance",
+            "Reconstruction error /\natlas RMS distance",
             "normalized_errors",
         )
 

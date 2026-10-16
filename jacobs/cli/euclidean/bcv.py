@@ -45,14 +45,18 @@ def reconstruction_eval(outputs_dir, overwrite, tasks, raise_on_error):
     from polpo.surface_mesh.transform import DeltaTransform
     from polpo.surface_mesh.varifold.geometry import VarifoldMetric
     from polpo.surface_mesh.varifold.tuning import SigmaFromScale
-    from polpo.workflow.task import CompositeTaskRunner
+    from polpo.workflow.task import CompositeTaskRunner, TaskRunner
 
     from jacobs.core.bcv import (
         get_longitudinal_fidelity_dir,
         get_reconstruction_eval_dir,
         load_selected_rank,
     )
-    from jacobs.core.euclidean import load_global_meshes
+    from jacobs.core.euclidean import (
+        get_atlas_distance_dir,
+        load_global_meshes,
+        save_atlas_distances,
+    )
     from jacobs.core.paths import resolve_data_dir
     from jacobs.core.pca import (
         LongitudinalFidelityEvaluator,
@@ -64,6 +68,7 @@ def reconstruction_eval(outputs_dir, overwrite, tasks, raise_on_error):
 
     reconstruction = {}
     longitudinal = {}
+    atlas_distance = {}
     for struct in resolve_subcortical_structs():
         struct_dir = outputs_dir / struct
         atlas, meshes = load_global_meshes(struct)
@@ -90,6 +95,18 @@ def reconstruction_eval(outputs_dir, overwrite, tasks, raise_on_error):
             subjects=[s for s in timed_meshes.keys_list() if is_pregnancy_subject(s)],
         )
 
+        atlas_distance[struct] = TaskRunner.from_callable(
+            partial(
+                save_atlas_distances,
+                get_atlas_distance_dir(struct_dir),
+                atlas,
+                meshes.flatten(),
+                metric,
+            ),
+            state_dir=get_atlas_distance_dir(struct_dir),
+            name="compute_atlas_distances",
+        )
+
     runner = CompositeTaskRunner(
         {
             "reconstruction": CompositeTaskRunner(
@@ -97,6 +114,9 @@ def reconstruction_eval(outputs_dir, overwrite, tasks, raise_on_error):
             ),
             "longitudinal": CompositeTaskRunner(
                 longitudinal, state_dir=outputs_dir / ".bcv" / "longitudinal_fidelity"
+            ),
+            "atlas_distance": CompositeTaskRunner(
+                atlas_distance, state_dir=outputs_dir / ".bcv" / "atlas_distance"
             ),
         },
         state_dir=outputs_dir / ".bcv" / "evaluation",
@@ -117,7 +137,7 @@ def reconstruction_eval_figures(
     Tasks: plot_errors, plot_normalized_errors, plot_attenuation. Defaults to all.
     """
     from jacobs.core.bcv import ReconstructionEvalFiguresRunner
-    from jacobs.core.euclidean import compute_atlas_rms_distances
+    from jacobs.core.euclidean import load_atlas_rms_distances
     from jacobs.core.lddmm.bcv import (
         load_longitudinal_fidelity_slopes,
         load_reconstruction_eval_errors,
@@ -126,10 +146,6 @@ def reconstruction_eval_figures(
     ReconstructionEvalFiguresRunner(
         figures_dir / "bcv" / "reconstruction_eval",
         partial(load_reconstruction_eval_errors, outputs_dir),
-        compute_atlas_rms_distances,
+        partial(load_atlas_rms_distances, outputs_dir),
         partial(load_longitudinal_fidelity_slopes, outputs_dir),
-    ).run(
-        overwrite=overwrite,
-        tasks=tasks or None,
-        raise_on_error=raise_on_error,
-    )
+    ).run(overwrite=overwrite, tasks=tasks or None, raise_on_error=raise_on_error)

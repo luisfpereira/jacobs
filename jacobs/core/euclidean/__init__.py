@@ -3,6 +3,7 @@ from functools import partial
 import numpy as np
 from polpo.dataset import NestedDataset
 from polpo.datasets.jacobs.mesh import load_dataset as load_surface_dataset
+from polpo.ext.numpy.io import load_indexed_arrays, save_indexed_arrays
 from polpo.neuroimaging.enigma.mesh import read_geometry
 from polpo.neuroimaging.naming import get_subcortical_struct_long_name
 from polpo.surface_mesh import Surface
@@ -11,7 +12,7 @@ from polpo.surface_mesh.transform import DeltaTransform
 from polpo.surface_mesh.varifold.geometry import VarifoldMetric
 from polpo.surface_mesh.varifold.tuning import SigmaFromScale
 
-from jacobs.core.paths import resolve_data_dir
+from jacobs.core.paths import find_experiment_dirs, resolve_data_dir
 from jacobs.core.study import (
     filter_pregnancy_weeks,
     get_session_to_week_map,
@@ -215,3 +216,31 @@ def compute_atlas_rms_distances(
             compute_atlas_rms_distance(atlas, meshes, metric)
         )
     return distances
+
+
+def get_atlas_distance_dir(base_dir):
+    return base_dir / "atlas_distance"
+
+
+def save_atlas_distances(results_dir, atlas, meshes, metric):
+    """Compute and save squared distances from meshes to the atlas."""
+    save_indexed_arrays(
+        results_dir / "squared_varifold.npz",
+        keys=meshes.keys_list(),
+        data={
+            "squared_dist": np.array(
+                [metric.squared_dist(mesh, atlas) for mesh in meshes.values_list()]
+            )
+        },
+    )
+
+
+def load_atlas_rms_distances(outputs_dir):
+    """Load the RMS distance to the atlas, keyed by long structure name."""
+    rms = {}
+    for struct, struct_dir in find_experiment_dirs(outputs_dir, long_name=True).items():
+        _, data = load_indexed_arrays(
+            get_atlas_distance_dir(struct_dir) / "squared_varifold.npz"
+        )
+        rms[struct] = np.sqrt(np.mean(data["squared_dist"]))
+    return rms
