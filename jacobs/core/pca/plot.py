@@ -217,6 +217,8 @@ class PCAReconstructionFiguresRunner(TaskRunner):
         self.figures_dir = figures_dir
         self._load_summaries = load_summaries
 
+        # TODO: make bcv_rank optional?
+
     @cached_property
     def summaries(self):
         return self._load_summaries()

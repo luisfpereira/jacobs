@@ -13,18 +13,16 @@ def pca():
 @pca.command()
 @_options.outputs_dir
 @_options.figures_dir
-@click.option("--subdir/--no-subdir", default=True)
 @click.option("--n-components", type=click.IntRange(min=2), default=5)
-@click.option("--overwrite", is_flag=True)
+@_options.runner_options
 @_options.plotting
-def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
+def pairplots(outputs_dir, figures_dir, n_components, overwrite, tasks, raise_on_error):
     """Generate PCA pairplots across subcortical structures."""
     from jacobs.core.lddmm.outputs import load_global_deltas_by_struct
     from jacobs.core.pca.plot import PCAPairplotsRunner
     from jacobs.core.style import get_subject_colors
 
-    if subdir:
-        figures_dir = figures_dir / f"pca_{n_components}"
+    figures_dir = figures_dir / f"pca_{n_components}"
 
     runner = PCAPairplotsRunner(
         figures_dir,
@@ -32,13 +30,18 @@ def pca_pairplots(outputs_dir, figures_dir, subdir, n_components, overwrite):
         colors=get_subject_colors(),
         n_components=n_components,
     )
-    runner.run(overwrite=overwrite)
+
+    runner.run(
+        overwrite=overwrite,
+        tasks=tasks or None,
+        raise_on_error=raise_on_error,
+    )
 
 
 @pca.command()
 @_options.outputs_dir
-@click.option("--overwrite", is_flag=True)
-def pca_reconstruction_eval(outputs_dir, overwrite):
+@_options.runner_options
+def reconstruction_eval(outputs_dir, overwrite, tasks, raise_on_error):
     """Evaluate PCA reconstruction error across a sweep of component counts."""
     from polpo.surface_mesh.transform import DeltaTransform
     from polpo.workflow.lddmm_to_global.output import LddmmToGlobalOutput
@@ -70,15 +73,21 @@ def pca_reconstruction_eval(outputs_dir, overwrite):
 
     CompositeTaskRunner(
         runners, state_dir=outputs_dir / ".pca" / "reconstruction_eval"
-    ).run(overwrite=overwrite)
+    ).run(
+        overwrite=overwrite,
+        tasks=tasks or None,
+        raise_on_error=raise_on_error,
+    )
 
 
 @pca.command()
 @_options.outputs_dir
 @_options.figures_dir
-@click.option("--overwrite", is_flag=True)
+@_options.runner_options
 @_options.plotting
-def pca_reconstruction_eval_figures(outputs_dir, figures_dir, overwrite):
+def reconstruction_eval_figures(
+    outputs_dir, figures_dir, overwrite, tasks, raise_on_error
+):
     """Plot PCA reconstruction errors, explained variance and BCV rank."""
     from jacobs.core.lddmm.pca import load_reconstruction_summaries
     from jacobs.core.pca.plot import PCAReconstructionFiguresRunner
@@ -88,5 +97,6 @@ def pca_reconstruction_eval_figures(outputs_dir, figures_dir, overwrite):
         partial(load_reconstruction_summaries, outputs_dir),
     ).run(
         overwrite=overwrite,
-        raise_on_error=True,
+        tasks=tasks or None,
+        raise_on_error=raise_on_error,
     )
