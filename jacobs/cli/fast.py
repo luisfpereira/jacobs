@@ -10,21 +10,16 @@ def fast():
 
 @fast.command()
 @_options.figures_dir
-@click.option("--subdir/--no-subdir", default=True)
-@click.option("--overwrite", is_flag=True)
-@_options.tasks
+@_options.runner_options
 @_options.plotting
-def volumes(figures_dir, subdir, overwrite, tasks):
+def volumes(figures_dir, overwrite, tasks, raise_on_error):
     """Generate FAST volume figures."""
     from jacobs.core.style import get_subject_colors
     from jacobs.core.volumes.fast import load_volumes
     from jacobs.core.volumes.figures import VolumeFiguresRunner
 
-    if subdir:
-        figures_dir = figures_dir / "volumes"
-
     runner = VolumeFiguresRunner(
-        figures_dir,
+        figures_dir / "volumes",
         load_volumes,
         colors=get_subject_colors(),
     )
@@ -32,4 +27,5 @@ def volumes(figures_dir, subdir, overwrite, tasks):
     runner.run(
         overwrite=overwrite,
         tasks=tasks or None,
+        raise_on_error=raise_on_error,
     )

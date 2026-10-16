@@ -16,6 +16,7 @@ def plot_volumes_over_time(
     ax=None,
     colors=None,
     legend=False,
+    ylabel="Volume",
     **kwargs,
 ):
     if ax is None:
@@ -24,7 +25,7 @@ def plot_volumes_over_time(
     plot_nested(dataset, ax=ax, colors=colors, include_label=legend, **kwargs)
 
     ax.set_xlabel("Week")
-    ax.set_ylabel("Volume")
+    ax.set_ylabel(ylabel)
     ax.set_xlim(0, 42)
 
     if legend:
@@ -105,10 +106,46 @@ class VolumeFiguresRunner(TaskRunner):
         )
         return volumes
 
+    @cached_property
+    def log_volumes(self):
+        return {
+            name: grouped.map_values(lambda dataset: dataset.map_values(np.log))
+            for name, grouped in self.volumes.items()
+        }
+
     @task
     def longitudinal(self):
+        self._plot_longitudinal(self.volumes, "longitudinal_volumes", ylabel="Volume")
+
+    @task
+    def log_longitudinal(self):
+        self._plot_longitudinal(
+            self.log_volumes, "log_longitudinal_volumes", ylabel="Log volume"
+        )
+
+    @task
+    def trajectory_summary(self):
+        self._plot_trajectory_summary(self.volumes, "trajectory_summary")
+
+    @task
+    def log_trajectory_summary(self):
+        self._plot_trajectory_summary(self.log_volumes, "log_trajectory_summary")
+
+    @task
+    def trajectory_summary_lr(self):
+        self._plot_trajectory_summary_lr(self.volumes, "trajectory_summary_lr")
+
+    @task
+    def log_trajectory_summary_lr(self):
+        self._plot_trajectory_summary_lr(self.log_volumes, "log_trajectory_summary_lr")
+
+    def _save_figure(self, fig, name):
+        fig.savefig(self.figures_dir / f"{name}.pdf")
+        plt.close(fig)
+
+    def _plot_longitudinal(self, volumes, name, ylabel):
         fig, _ = plot_grid(
-            self.volumes,
+            volumes,
             plot_layers,
             plot_fnc=plot_volumes_over_time,
             layer_kwargs={
@@ -119,23 +156,23 @@ class VolumeFiguresRunner(TaskRunner):
                     "alpha": 0.5,
                     "colors": self.colors,
                     "legend": True,
+                    "ylabel": ylabel,
                 },
                 "control": {
                     "kind": "scatter",
                     "marker": "x",
                     "alpha": 0.25,
                     "colors": self.colors,
+                    "ylabel": ylabel,
                 },
             },
             legend=False,
             figsize=(10, 16),
         )
 
-        fig.savefig(self.figures_dir / "longitudinal_volumes.pdf")
-        plt.close(fig)
+        self._save_figure(fig, name)
 
-    @task
-    def trajectory_summary(self):
+    def _plot_trajectory_summary(self, volumes, name):
         def _select(_, grouped):
             return (
                 grouped.map_values(
@@ -144,7 +181,7 @@ class VolumeFiguresRunner(TaskRunner):
             )
 
         fig, _ = plot_grid(
-            self.volumes,
+            volumes,
             plot_layers,
             select=_select,
             plot_fnc=plot_trajectory_summary,
@@ -157,16 +194,14 @@ class VolumeFiguresRunner(TaskRunner):
             figsize=(10, 16),
         )
 
-        fig.savefig(self.figures_dir / "trajectory_summary.pdf")
-        plt.close(fig)
+        self._save_figure(fig, name)
 
-    @task
-    def trajectory_summary_lr(self):
+    def _plot_trajectory_summary_lr(self, volumes, name):
         summaries = {
-            name: grouped.map_values(
+            struct: grouped.map_values(
                 lambda dataset: dataset.split_outer().map_values(fit_trajectory)
             )
-            for name, grouped in self.volumes.items()
+            for struct, grouped in volumes.items()
         }
 
         paired = pair_hemispheres(summaries)
@@ -212,8 +247,8 @@ class VolumeFiguresRunner(TaskRunner):
         )
 
         layer_handles = [
-            make_legend_handle(name, kwargs_)
-            for name, kwargs_ in {
+            make_legend_handle(name_, kwargs_)
+            for name_, kwargs_ in {
                 "left": {"marker": "<"},
                 "right": {"marker": ">"},
             }.items()
@@ -227,5 +262,4 @@ class VolumeFiguresRunner(TaskRunner):
             frameon=False,
         )
 
-        fig.savefig(self.figures_dir / "trajectory_summary_lr.pdf")
-        plt.close(fig)
+        self._save_figure(fig, name)
