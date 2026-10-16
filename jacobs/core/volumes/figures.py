@@ -4,6 +4,7 @@ from functools import cached_property
 import numpy as np
 from matplotlib import pyplot as plt
 from polpo.dataset.plot import plot_nested
+from polpo.latex import add_subfigures, compile_latex, make_figure_document
 from polpo.plot.pyplot import make_legend_handle, plot_grid, plot_layers
 from polpo.workflow.task import TaskRunner, task
 from sklearn.linear_model import LinearRegression
@@ -84,7 +85,7 @@ def pair_hemispheres(data):
 
 class VolumeFiguresRunner(TaskRunner):
     def __init__(self, figures_dir, load_volumes, colors, state_dir=None):
-        super().__init__(state_dir or figures_dir / ".state")
+        super().__init__(state_dir or figures_dir / ".volumes")
 
         self.figures_dir = figures_dir
         self.colors = colors
@@ -124,20 +125,24 @@ class VolumeFiguresRunner(TaskRunner):
         )
 
     @task
-    def trajectory_summary(self):
-        self._plot_trajectory_summary(self.volumes, "trajectory_summary")
-
-    @task
-    def log_trajectory_summary(self):
-        self._plot_trajectory_summary(self.log_volumes, "log_trajectory_summary")
-
-    @task
     def trajectory_summary_lr(self):
         self._plot_trajectory_summary_lr(self.volumes, "trajectory_summary_lr")
 
     @task
     def log_trajectory_summary_lr(self):
         self._plot_trajectory_summary_lr(self.log_volumes, "log_trajectory_summary_lr")
+
+    @task
+    def merge_log_figures(self):
+        paths = [
+            "log_longitudinal_volumes.pdf",
+            "log_trajectory_summary_lr.pdf",
+        ]
+
+        body = add_subfigures(paths, n_cols=2)
+        text = make_figure_document(body, figures_path=self.figures_dir)
+
+        compile_latex(text, self.figures_dir / "log_volumes_combined.pdf")
 
     def _save_figure(self, fig, name):
         fig.savefig(self.figures_dir / f"{name}.pdf")
@@ -167,30 +172,6 @@ class VolumeFiguresRunner(TaskRunner):
                 },
             },
             legend=False,
-            figsize=(10, 16),
-        )
-
-        self._save_figure(fig, name)
-
-    def _plot_trajectory_summary(self, volumes, name):
-        def _select(_, grouped):
-            return (
-                grouped.map_values(
-                    lambda dataset: dataset.split_outer().map_values(fit_trajectory)
-                ),
-            )
-
-        fig, _ = plot_grid(
-            volumes,
-            plot_layers,
-            select=_select,
-            plot_fnc=plot_trajectory_summary,
-            layer_kwargs={
-                "case": {"colors": self.colors, "legend": True},
-                "control": {"colors": self.colors, "alpha": 0.25},
-            },
-            legend=False,
-            sharex=False,
             figsize=(10, 16),
         )
 
