@@ -24,8 +24,8 @@ def cli(log_level):
 
 @cli.command()
 @_options.outputs_dir
-@click.option("--overwrite", is_flag=True)
-def to_global(outputs_dir, overwrite):
+@_options.runner_options
+def to_global(outputs_dir, overwrite, tasks, raise_on_error):
     """Run LDDMM-to-global for each subcortical structure."""
     from functools import partial
 
@@ -49,8 +49,15 @@ def to_global(outputs_dir, overwrite):
         for struct in resolve_subcortical_structs()
     }
 
-    runner = CompositeTaskRunner(runners, state_dir=outputs_dir / ".lddmm_to_global")
-    runner.run(overwrite=overwrite)
+    runner = CompositeTaskRunner(
+        runners,
+        state_dir=outputs_dir / ".lddmm_to_global",
+    )
+    runner.run(
+        overwrite=overwrite,
+        tasks=tasks or None,
+        raise_on_error=raise_on_error,
+    )
 
     if runner.manifest.status == "failed":
         raise click.ClickException("All tasks failed.")
@@ -58,8 +65,8 @@ def to_global(outputs_dir, overwrite):
 
 @cli.command()
 @_options.outputs_dir
-@click.option("--overwrite", is_flag=True)
-def post_dists(outputs_dir, overwrite):
+@_options.runner_options
+def post_dists(outputs_dir, overwrite, tasks, raise_on_error):
     """Compute LDDMM distances and errors for global representations."""
     from polpo.workflow.lddmm_to_global.distances import (
         LddmmDistances,
@@ -69,7 +76,7 @@ def post_dists(outputs_dir, overwrite):
 
     from jacobs.core.lddmm.outputs import find_experiment_dirs
 
-    tasks = (
+    lddmm_tasks = (
         "local_reconstruction_error",
         "local_atlas_fit_error",
         "global_atlas_fit_error",
@@ -83,11 +90,15 @@ def post_dists(outputs_dir, overwrite):
         struct: PersistentEvaluator(
             LddmmDistances(experiment_dir),
             experiment_dir / "post_dists" / "lddmm",
-        ).resolve(tasks=tasks)
+        ).resolve(tasks=lddmm_tasks)
         for struct, experiment_dir in find_experiment_dirs(outputs_dir).items()
     }
 
     runner = CompositeTaskRunner(
         runners, state_dir=outputs_dir / ".post_dists" / "lddmm"
     )
-    runner.run(overwrite=overwrite)
+    runner.run(
+        overwrite=overwrite,
+        tasks=tasks or None,
+        raise_on_error=raise_on_error,
+    )

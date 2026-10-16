@@ -25,8 +25,8 @@ def volumes(figures_dir, overwrite, tasks, raise_on_error):
         load_volumes,
         colors=get_subject_colors(),
     )
-
     runner.run(
         overwrite=overwrite,
         tasks=tasks or None,
+        raise_on_error=raise_on_error,
     )

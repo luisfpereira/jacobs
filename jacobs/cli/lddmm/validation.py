@@ -18,8 +18,9 @@ def validation():
     default=("eucl", "var"),
     show_default=True,
 )
-@click.option("--overwrite", is_flag=True)
-def compute(outputs_dir, metrics, overwrite):
+@_options.overwrite
+@_options.raise_on_error
+def compute(outputs_dir, metrics, overwrite, raise_on_error):
     """Compute Euclidean and/or varifold distances between global representations."""
     from polpo.workflow.lddmm_to_global.distances import (
         EuclideanDistances,
@@ -52,7 +53,11 @@ def compute(outputs_dir, metrics, overwrite):
     }
 
     runner = CompositeTaskRunner(runners, state_dir=outputs_dir / ".post_dists")
-    runner.run(tasks=metrics or None, overwrite=overwrite)
+    runner.run(
+        tasks=metrics or None,
+        overwrite=overwrite,
+        raise_on_error=raise_on_error,
+    )
 
 
 @validation.command()
