@@ -504,7 +504,7 @@ class MetricVolumeFiguresMerger(BaseFiguresRunner):
             body, figures_path=self.figures_dir, **self.document
         )
 
-        compile_latex(text, self._get_figpath("-combined", prefixed=True))
+        compile_latex(text, self._get_figpath("-combined", prefixed=True), crop=True)
 
 
 class MetricsFiguresMerger(BaseFiguresRunner):

@@ -244,7 +244,9 @@ class EvaluationFiguresRunner(TaskRunner):
             body, figures_path=self.figures_dir, **PAPER_DOCUMENT
         )
 
-        compile_latex(text, self.figures_dir / f"{ERRORS_FIGURE}-{SCALING_FIGURE}.pdf")
+        compile_latex(
+            text, self.figures_dir / f"{ERRORS_FIGURE}-{SCALING_FIGURE}.pdf", crop=True
+        )
 
 
 def _include_legend(figures_dir):
@@ -295,4 +297,4 @@ def make_errors_scaling_panel(
     )
     text = make_figure_document(body, figures_path=output_path.parent, **document)
 
-    compile_latex(text, output_path)
+    compile_latex(text, output_path, crop=True)
