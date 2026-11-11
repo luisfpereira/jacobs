@@ -73,10 +73,18 @@ def compute(outputs_dir, metrics, overwrite, raise_on_error):
         "lddmm, merge-volume, merge-metrics. Defaults to all."
     ),
 )
+@click.option(
+    "--paper",
+    is_flag=True,
+    help="Only generate the figures needed for var-combined.",
+)
 @click.option("--overwrite", is_flag=True)
 @_options.plotting
-def figures(outputs_dir, figures_dir, subdir, tasks, overwrite):
+def figures(outputs_dir, figures_dir, subdir, tasks, paper, overwrite):
     """Generate validation figures for LDDMM-to-global outputs."""
+    if paper and tasks:
+        raise click.UsageError("--paper and --task are mutually exclusive.")
+
     from polpo.workflow.task import CompositeTaskRunner
 
     from jacobs.core.lddmm.outputs import load_multi_distances, load_multi_outputs
@@ -91,7 +99,7 @@ def figures(outputs_dir, figures_dir, subdir, tasks, overwrite):
     if subdir:
         figures_dir = figures_dir / "lddmm"
 
-    metrics = {"eucl": "eucl", "var": "var", "lddmm": "lddmm"}
+    metrics = {"eucl": "Euclidean", "var": "varifold", "lddmm": "LDDMM"}
     structs = ["Thal", "Caud", "Puta", "Pall", "Hipp", "Amyg"]
 
     outputs = load_multi_outputs(outputs_dir, structs)
@@ -107,22 +115,26 @@ def figures(outputs_dir, figures_dir, subdir, tasks, overwrite):
         ),
     }
 
-    for name, metric in metrics.items():
+    for metric, metric_name in metrics.items():
         runner = MetricFiguresRunner(
             figures_dir,
             load_multi_distances(outputs, f"post_dists/{metric}"),
+            metric_name,
             prefix=metric,
             state_dir=figures_dir / f".{metric}",
         )
 
         if metric == "lddmm":
-            runners[name] = runner.resolve(tasks=("dist_rec", "dist_atlases"))
+            runners[metric] = runner.resolve(tasks=("dist_rec", "dist_atlases"))
+        elif paper:
+            runners[metric] = runner.resolve(tasks=("dist_hist", "dist_comparison"))
         else:
-            runners[name] = runner.resolve(exclude_tasks=("dist_rec",))
+            runners[metric] = runner.resolve(exclude_tasks=("dist_rec",))
 
     runners["merge-volume"] = MetricVolumeFiguresMerger(
         figures_dir,
         prefix="var",
+        sep="",
         state_dir=figures_dir / ".metrics_volume_combined",
     )
     runners["merge-metrics"] = MetricsFiguresMerger(
@@ -130,6 +142,9 @@ def figures(outputs_dir, figures_dir, subdir, tasks, overwrite):
         ["eucl_", "var_"],
         state_dir=figures_dir / ".metrics_combined",
     )
+
+    if paper:
+        tasks = ("volumes", "var", "merge-volume")
 
     CompositeTaskRunner(runners, figures_dir).run(
         tasks=tasks or None,

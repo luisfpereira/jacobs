@@ -52,7 +52,8 @@ class RankSelectionFiguresRunner(TaskRunner):
             self.results,
             plot_rank_selection,
             figsize=(10, 3 * len(self.results) // 2),
-            share_legend=False,
+            shared_legend=None,
+            sharex=True,
         )
         fig.savefig(self.figures_dir / "rank_errors")
 

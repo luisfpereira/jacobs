@@ -82,14 +82,31 @@ class PCAPairplotsRunner(TaskRunner):
 # TODO: plotting needs strong cleaning
 
 
-def plot_reconstruction_mses(
-    ks,
-    sdists,
-    error_scale,
-    bcv_rank=None,
-    template_mse=None,
-    ax=None,
-):
+def plot_reconstruction_mses(summary, normalize=False, ax=None):
+    """Plot reconstruction MSEs against PCA rank.
+
+    Parameters
+    ----------
+    summary : dict
+        Reconstruction summary, with ``ranks``, ``sdists``, ``error_scale``,
+        ``bcv_rank`` and, if normalizing, ``template_mse``.
+    normalize : bool
+        Whether to divide MSEs by the template MSE.
+    ax : matplotlib.axes.Axes or None
+        Axes on which to plot. A new figure is created if None.
+
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+    ax_r : matplotlib.axes.Axes
+        Twin axes for the Euclidean MSE, or ``ax`` if normalizing.
+    """
+    ks = summary["ranks"]
+    sdists = summary["sdists"]
+    error_scale = summary["error_scale"]
+    bcv_rank = summary["bcv_rank"]
+    template_mse = summary["template_mse"] if normalize else None
+
     if ax is None:
         _, ax = plt.subplots()
 
@@ -187,20 +204,31 @@ def plot_pca_variance(
     return ax, ax_r
 
 
-def plot_pca_variance_with_rank(
-    explained_variance_ratio,
-    bcv_rank,
-    levels=(0.9, 0.95),
-    ax=None,
-):
+def plot_pca_variance_with_rank(summary, levels=(0.9, 0.95), ax=None):
+    """Plot explained variance against PCA rank, marking the BCV rank.
+
+    Parameters
+    ----------
+    summary : dict
+        Reconstruction summary, with ``explained_variance_ratio`` and
+        ``bcv_rank``.
+    levels : sequence of float
+        Cumulative explained variance levels to mark.
+    ax : matplotlib.axes.Axes or None
+        Axes on which to plot. A new figure is created if None.
+
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+    """
     ax, ax_r = plot_pca_variance(
-        explained_variance_ratio,
+        summary["explained_variance_ratio"],
         levels=levels,
         ax=ax,
     )
 
     ax.axvline(
-        bcv_rank,
+        summary["bcv_rank"],
         linestyle="--",
         label="BCV rank",
         color="red",
@@ -230,13 +258,7 @@ class PCAReconstructionFiguresRunner(TaskRunner):
             self.summaries,
             plot_reconstruction_mses,
             figsize=(10, 3 * len(self.summaries) // 2),
-            share_legend=True,
-            select=lambda _, result: (
-                result["ranks"],
-                result["sdists"],
-                result["error_scale"],
-                result["bcv_rank"],
-            ),
+            sharex=True,
         )
 
         fig.savefig(self.figures_dir / "mses")
@@ -248,14 +270,8 @@ class PCAReconstructionFiguresRunner(TaskRunner):
             self.summaries,
             plot_reconstruction_mses,
             figsize=(10, 3 * len(self.summaries) // 2),
-            share_legend=True,
-            select=lambda _, result: (
-                result["ranks"],
-                result["sdists"],
-                result["error_scale"],
-                result["bcv_rank"],
-                result["template_mse"],
-            ),
+            normalize=True,
+            sharex=True,
         )
 
         fig.savefig(self.figures_dir / "normalized_mses")
@@ -266,10 +282,6 @@ class PCAReconstructionFiguresRunner(TaskRunner):
             self.summaries,
             plot_pca_variance_with_rank,
             figsize=(10, 3 * len(self.summaries) // 2),
-            share_legend=True,
-            select=lambda _, summary: (
-                summary["explained_variance_ratio"],
-                summary["bcv_rank"],
-            ),
+            sharex=True,
         )
         fig.savefig(self.figures_dir / "explained_variance_ratio")

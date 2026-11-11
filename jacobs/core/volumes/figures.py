@@ -152,7 +152,7 @@ class VolumeFiguresRunner(TaskRunner):
         fig, _ = plot_grid(
             volumes,
             plot_layers,
-            plot_fnc=plot_volumes_over_time,
+            plot_layer=plot_volumes_over_time,
             layer_kwargs={
                 "case": {
                     "kind": "plot",
@@ -173,6 +173,7 @@ class VolumeFiguresRunner(TaskRunner):
             },
             legend=False,
             figsize=(10, 16),
+            sharex=True,
         )
 
         self._save_figure(fig, name)
@@ -219,12 +220,11 @@ class VolumeFiguresRunner(TaskRunner):
         fig, _ = plot_grid(
             layers,
             plot_layers,
-            plot_fnc=plot_trajectory_summary,
+            plot_layer=plot_trajectory_summary,
             layer_kwargs=layer_kwargs,
             legend=False,
             figsize=(8, 10),
             sharex=False,
-            legend_wrap=1,
         )
 
         layer_handles = [
