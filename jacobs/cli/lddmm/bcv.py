@@ -1,3 +1,15 @@
+"""Bi-cross-validation of PCA ranks on LDDMM-to-global outputs.
+
+A full analysis runs, in order, with ``OUTPUTS_DIR`` and ``FIGURES_DIR`` set
+(e.g. ``source config/local/lddmm_enigma.sh``)::
+
+    jacobs lddmm bcv rank-selection
+    jacobs lddmm bcv rank-selection-figures
+    jacobs lddmm bcv reconstruction-eval
+    jacobs lddmm bcv longitudinal-fidelity
+    jacobs lddmm bcv evaluation-figures
+"""
+
 from functools import partial
 
 import click
@@ -45,11 +57,14 @@ def rank_selection(outputs_dir, overwrite):
 @_options.plotting
 def rank_selection_figures(outputs_dir, figures_dir, overwrite):
     """Plot rank-selection errors per structure."""
-    from jacobs.core.bcv import RankSelectionFiguresRunner
-    from jacobs.core.lddmm.bcv import load_rank_selection_results
+    from jacobs.core.bcv import (
+        RankSelectionFiguresRunner,
+        get_rank_selection_figures_dir,
+        load_rank_selection_results,
+    )
 
     RankSelectionFiguresRunner(
-        figures_dir / "bcv" / "rank_selection",
+        get_rank_selection_figures_dir(figures_dir),
         partial(load_rank_selection_results, outputs_dir),
     ).run(overwrite=overwrite)
 
@@ -59,74 +74,79 @@ def rank_selection_figures(outputs_dir, figures_dir, overwrite):
 @_options.tasks
 @click.option("--overwrite", is_flag=True)
 def reconstruction_eval(outputs_dir, tasks, overwrite):
-    """Evaluate PCA reconstruction error at each structure's BCV-selected rank."""
+    """Evaluate PCA reconstruction errors at each structure's BCV-selected rank."""
+    from polpo.surface_mesh.transform import DeltaTransform
+    from polpo.workflow.lddmm_to_global.output import LddmmToGlobalOutput
+    from polpo.workflow.task import CompositeTaskRunner
+
+    from jacobs.core.bcv import get_reconstruction_eval_dir, load_selected_rank
+    from jacobs.core.lddmm.outputs import (
+        find_experiment_dirs,
+        load_global_atlas,
+        load_global_meshes,
+    )
+    from jacobs.core.pca import PCAReconstructionEvaluator
+
+    runners = {}
+    for struct, struct_dir in find_experiment_dirs(outputs_dir).items():
+        output = LddmmToGlobalOutput(struct_dir)
+
+        runners[struct] = PCAReconstructionEvaluator(
+            get_reconstruction_eval_dir(struct_dir),
+            load_global_meshes(output).flatten(),
+            DeltaTransform(load_global_atlas(output)),
+            metrics={
+                "squared_varifold": output.instantiate_varifold_metric().squared_dist,
+            },
+            ks=[int(load_selected_rank(struct_dir))],
+        )
+
+    runner = CompositeTaskRunner(
+        runners, state_dir=outputs_dir / ".bcv" / "reconstruction_eval"
+    )
+    runner.run(overwrite=overwrite, tasks=tasks or None, raise_on_error=True)
+
+
+@bcv.command()
+@_options.outputs_dir
+@_options.tasks
+@click.option("--overwrite", is_flag=True)
+def longitudinal_fidelity(outputs_dir, tasks, overwrite):
+    """Compare log-volume slopes of input and reconstructed meshes at the BCV rank."""
     from polpo.datasets.jacobs.utils import is_pregnancy_subject
     from polpo.surface_mesh.transform import DeltaTransform
     from polpo.workflow.lddmm_to_global.output import LddmmToGlobalOutput
     from polpo.workflow.task import CompositeTaskRunner
 
-    from jacobs.core.bcv import (
-        get_longitudinal_fidelity_dir,
-        get_reconstruction_eval_dir,
-        load_selected_rank,
-    )
+    from jacobs.core.bcv import get_longitudinal_fidelity_dir, load_selected_rank
     from jacobs.core.lddmm.outputs import (
         find_experiment_dirs,
         load_global_atlas,
         load_global_meshes,
     )
     from jacobs.core.paths import resolve_data_dir
-    from jacobs.core.pca import (
-        LongitudinalFidelityEvaluator,
-        PCAReconstructionEvaluator,
-    )
+    from jacobs.core.pca import LongitudinalFidelityEvaluator
     from jacobs.core.study import get_session_to_week_map
 
     session_to_week = get_session_to_week_map(resolve_data_dir(None))
 
-    reconstruction = {}
-    longitudinal = {}
+    runners = {}
     for struct, struct_dir in find_experiment_dirs(outputs_dir).items():
         output = LddmmToGlobalOutput(struct_dir)
-        meshes = load_global_meshes(output)
-        transform = DeltaTransform(load_global_atlas(output))
-        ks = [int(load_selected_rank(struct_dir))]
+        timed_meshes = load_global_meshes(output).map_keys(session_to_week)
 
-        reconstruction[struct] = PCAReconstructionEvaluator(
-            get_reconstruction_eval_dir(struct_dir),
-            meshes.flatten(),
-            transform,
-            metrics={
-                "squared_varifold": output.instantiate_varifold_metric().squared_dist,
-            },
-            ks=ks,
-        )
-
-        timed_meshes = meshes.map_keys(session_to_week)
-        longitudinal[struct] = LongitudinalFidelityEvaluator(
+        runners[struct] = LongitudinalFidelityEvaluator(
             get_longitudinal_fidelity_dir(struct_dir),
             timed_meshes,
-            transform,
-            ks=ks,
+            DeltaTransform(load_global_atlas(output)),
+            ks=[int(load_selected_rank(struct_dir))],
             subjects=[s for s in timed_meshes.keys_list() if is_pregnancy_subject(s)],
         )
 
     runner = CompositeTaskRunner(
-        {
-            "reconstruction": CompositeTaskRunner(
-                reconstruction, state_dir=outputs_dir / ".bcv" / "reconstruction_eval"
-            ),
-            "longitudinal": CompositeTaskRunner(
-                longitudinal, state_dir=outputs_dir / ".bcv" / "longitudinal_fidelity"
-            ),
-        },
-        state_dir=outputs_dir / ".bcv" / "evaluation",
+        runners, state_dir=outputs_dir / ".bcv" / "longitudinal_fidelity"
     )
-    runner.run(
-        overwrite=overwrite,
-        tasks=tasks or None,
-        raise_on_error=True,
-    )
+    runner.run(overwrite=overwrite, tasks=tasks or None, raise_on_error=True)
 
 
 @bcv.command()
@@ -135,38 +155,36 @@ def reconstruction_eval(outputs_dir, tasks, overwrite):
 @_options.tasks
 @click.option("--overwrite", is_flag=True)
 @click.option(
-    "--normalize/--no-normalize",
-    default=True,
-    show_default=True,
-    help="Plot errors relative to the atlas RMS distance, or raw errors.",
-)
-@click.option(
     "--legend",
     is_flag=True,
     help="Add a legend to each figure instead of a single merged one.",
 )
+@_options.noise_floor_dir
 @_options.plotting
-def reconstruction_eval_figures(
-    outputs_dir, figures_dir, tasks, normalize, legend, overwrite
+def evaluation_figures(
+    outputs_dir, figures_dir, noise_floor_dir, tasks, legend, overwrite
 ):
     """Plot reconstruction errors and trend scaling factor at the BCV rank.
+
+    Needs the results of reconstruction-eval and longitudinal-fidelity.
 
     Tasks: plot_errors, plot_scaling, plot_legend, merge_errors_scaling.
     Defaults to all.
     """
-    from jacobs.core.bcv import ReconstructionEvalFiguresRunner
+    from jacobs.core.bcv import EvaluationFiguresRunner, get_evaluation_figures_dir
+    from jacobs.core.enigma import load_noise_floors
     from jacobs.core.lddmm.bcv import (
         load_longitudinal_fidelity_slopes,
         load_reconstruction_eval_errors,
     )
-    from jacobs.core.lddmm.outputs import load_atlas_rms_distances
 
-    ReconstructionEvalFiguresRunner(
-        figures_dir / "bcv" / "reconstruction_eval",
+    EvaluationFiguresRunner(
+        get_evaluation_figures_dir(figures_dir),
         partial(load_reconstruction_eval_errors, outputs_dir),
-        partial(load_atlas_rms_distances, outputs_dir),
         partial(load_longitudinal_fidelity_slopes, outputs_dir),
-        normalize=normalize,
+        load_noise_floors=None
+        if noise_floor_dir is None
+        else partial(load_noise_floors, noise_floor_dir),
         legend=legend,
     ).run(
         tasks=tasks or None,

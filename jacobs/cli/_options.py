@@ -66,3 +66,22 @@ def plotting(func):
         return func(*args, **kwargs)
 
     return wrapper
+
+
+features = click.option(
+    "--features",
+    type=click.Choice(["deltas", "vertices"]),
+    default="deltas",
+    show_default=True,
+    help="Represent meshes as baseline deltas or registered vertices. "
+    "Use the same choice for every step, and one outputs directory per choice.",
+)
+
+noise_floor_dir = click.option(
+    "--noise-floor-dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    envvar="NOISE_FLOOR_DIR",
+    default=None,
+    help="Outputs directory of `jacobs enigma noise-floor`. If given, error "
+    "figures mark each structure's noise floor.",
+)

@@ -2,108 +2,17 @@ from functools import partial
 
 import numpy as np
 from polpo.dataset import NestedDataset
-from polpo.datasets.jacobs.mesh import load_dataset as load_surface_dataset
 from polpo.ext.numpy.io import load_indexed_arrays, save_indexed_arrays
-from polpo.neuroimaging.enigma.mesh import read_geometry
 from polpo.neuroimaging.naming import get_subcortical_struct_long_name
 from polpo.surface_mesh import Surface
-from polpo.surface_mesh.registration import SurfaceRigidRegistration
 from polpo.surface_mesh.transform import DeltaTransform
-from polpo.surface_mesh.varifold.geometry import VarifoldMetric
-from polpo.surface_mesh.varifold.tuning import SigmaFromScale
 
-from jacobs.core.paths import find_experiment_dirs, resolve_data_dir
-from jacobs.core.study import (
-    filter_pregnancy_weeks,
-    get_session_to_week_map,
-    resolve_subcortical_structs,
-    resolve_subject_ids,
-    select_observations_and_atlas_inputs,
+from jacobs.core.paths import find_experiment_dirs
+from jacobs.core.enigma import (
+    load_registered_dataset,
+    load_registered_dataset_with_baselines,
 )
-
-
-def read_surface(path):
-    return Surface(*read_geometry(path))
-
-
-def load_path_dataset(struct, data_dir=None, subject_ids=None):
-    data_dir = resolve_data_dir(data_dir)
-    subject_ids = resolve_subject_ids(subject_ids)
-
-    return load_surface_dataset(
-        data_dir=data_dir,
-        subject_subset=subject_ids,
-        struct_subset=[struct],
-        derivative="enigma",
-        as_surface=False,
-    )[struct]
-
-
-def register_dataset(dataset):
-    target = dataset.flatten().values_list()[0]
-
-    register = SurfaceRigidRegistration(known_correspondences=True).against_same_target(
-        target
-    )
-
-    return dataset.transform(register)
-
-
-def load_registered_dataset(struct, data_dir=None, subject_ids=None):
-    """Load and rigidly register pregnancy-window observations."""
-
-    data_dir = resolve_data_dir(data_dir)
-    paths = load_path_dataset(struct, data_dir, subject_ids)
-
-    session_to_week = get_session_to_week_map(data_dir)
-    paths = filter_pregnancy_weeks(paths, session_to_week)
-
-    surfaces = paths.map_values(read_surface)
-    return register_dataset(surfaces)
-
-
-def load_registered_dataset_with_baselines(struct, data_dir=None, subject_ids=None):
-    """Prepare rigidly aligned observation and baseline surface datasets.
-
-    Load surfaces, select observations and baseline inputs, and rigidly
-    register all meshes to a common reference.
-
-    Parameters
-    ----------
-    struct : str
-        Subcortical structure to load.
-    data_dir : path-like
-        Root directory containing the dataset.
-    subject_ids : array-like
-        Subject identifiers to include.
-
-    Returns
-    -------
-    observations : NestedDataset
-        Registered surfaces within the pregnancy window (weeks 0-42),
-        retaining all observations from non-pregnancy subjects.
-    baseline_inputs : NestedDataset
-        Registered surfaces selected for baseline estimation.
-    """
-    data_dir = resolve_data_dir(data_dir)
-    paths = load_path_dataset(struct, data_dir, subject_ids)
-
-    session_to_week = get_session_to_week_map(data_dir)
-    observation_paths, baseline_paths = select_observations_and_atlas_inputs(
-        paths, session_to_week
-    )
-
-    # avoid loading shared observations twice
-    selected_paths = observation_paths.merge(baseline_paths, strict=False)
-
-    surfaces = selected_paths.map_values(read_surface)
-
-    registered = register_dataset(surfaces)
-
-    return (
-        registered.select_inner(observation_paths.nested_keys()),
-        registered.select_inner(baseline_paths.nested_keys()),
-    )
+from jacobs.core.study import resolve_subcortical_structs
 
 
 def compute_baseline_deltas(observations, baseline_inputs):
@@ -156,22 +65,29 @@ def compute_mean_surface(surfaces):
     return Surface(np.mean([s.vertices for s in surfaces], axis=0), surfaces[0].faces)
 
 
-def compute_global_meshes(observations, baseline_inputs):
-    """Express observations on a common atlas: atlas + (observation - subject baseline).
-
-    The Euclidean analogue of LDDMM-to-global: a subject's baseline is the mean
-    of its baseline inputs, and the atlas is the mean of the baselines.
-    """
-    baselines = {
+def compute_subject_baselines(baseline_inputs):
+    """Average each subject's baseline inputs, keyed by subject."""
+    return {
         subject: compute_mean_surface(sessions.values_list())
         for subject, sessions in baseline_inputs.iter_outer()
     }
-    atlas = compute_mean_surface(list(baselines.values()))
+
+
+def compute_atlas(baseline_inputs):
+    """Euclidean atlas: the mean of the subject baselines."""
+    return compute_mean_surface(
+        list(compute_subject_baselines(baseline_inputs).values())
+    )
+
+
+def to_global_meshes(observations, baseline_inputs, atlas):
+    """Express observations on the atlas: atlas + (observation - subject baseline)."""
+    baselines = compute_subject_baselines(baseline_inputs)
 
     def to_global(mesh, baseline):
         return Surface(atlas.vertices + mesh.vertices - baseline.vertices, atlas.faces)
 
-    meshes = NestedDataset(
+    return NestedDataset(
         {
             subject: sessions.map_values(
                 partial(to_global, baseline=baselines[subject])
@@ -179,7 +95,16 @@ def compute_global_meshes(observations, baseline_inputs):
             for subject, sessions in observations.iter_outer()
         }
     )
-    return atlas, meshes
+
+
+def compute_global_meshes(observations, baseline_inputs):
+    """Express observations on a common atlas: atlas + (observation - subject baseline).
+
+    The Euclidean analogue of LDDMM-to-global: a subject's baseline is the mean
+    of its baseline inputs, and the atlas is the mean of the baselines.
+    """
+    atlas = compute_atlas(baseline_inputs)
+    return atlas, to_global_meshes(observations, baseline_inputs, atlas)
 
 
 def load_global_meshes(struct, data_dir=None, subject_ids=None):
@@ -189,33 +114,43 @@ def load_global_meshes(struct, data_dir=None, subject_ids=None):
     )
 
 
-def instantiate_varifold_metric(meshes, object_ratio=0.2, engine="auto", device="cpu"):
-    """Instantiate a varifold metric tuned on the meshes, as in LDDMM-to-global."""
-    sigma = float(SigmaFromScale(object_ratio=object_ratio)(meshes))
-    return VarifoldMetric(sigma=sigma, engine=engine, device=device)
+def _check_features(features):
+    valid = ("deltas", "vertices")
+    if features not in valid:
+        raise ValueError(f"Unknown features {features!r}, expected one of {valid}.")
 
 
-def compute_atlas_rms_distance(atlas, meshes, metric):
-    """Compute the RMS distance from meshes to the atlas under the metric."""
-    return np.sqrt(np.mean([metric.squared_dist(mesh, atlas) for mesh in meshes]))
+def load_eval_meshes(struct, features="deltas", data_dir=None, subject_ids=None):
+    """Load the meshes evaluated after rank selection.
 
+    Parameters
+    ----------
+    struct : str
+        Subcortical structure.
+    features : str
+        ``"deltas"`` (global meshes) or ``"vertices"`` (registered meshes).
+    data_dir : pathlib.Path or None
+        Data directory.
+    subject_ids : sequence or None
+        Subjects to load. If None, all subjects.
 
-def compute_atlas_rms_distances(
-    structs=None, data_dir=None, subject_ids=None, metric_kwargs=None
-):
-    """Compute the RMS varifold distance to the Euclidean atlas, keyed by long structure name."""
-    metric_kwargs = metric_kwargs or {}
+    Returns
+    -------
+    meshes : NestedDataset
+        Evaluated meshes, keyed by subject and session.
+    baseline_inputs : NestedDataset
+        Registered baseline inputs, keyed by subject and session.
+    """
+    _check_features(features)
 
-    distances = {}
-    for struct in resolve_subcortical_structs(structs):
-        atlas, meshes = load_global_meshes(struct, data_dir, subject_ids)
-        meshes = meshes.flatten().values_list()
-        metric = instantiate_varifold_metric([atlas], **metric_kwargs)
+    observations, baseline_inputs = load_registered_dataset_with_baselines(
+        struct, data_dir, subject_ids
+    )
+    if features == "vertices":
+        return observations, baseline_inputs
 
-        distances[get_subcortical_struct_long_name(struct)] = (
-            compute_atlas_rms_distance(atlas, meshes, metric)
-        )
-    return distances
+    atlas = compute_atlas(baseline_inputs)
+    return to_global_meshes(observations, baseline_inputs, atlas), baseline_inputs
 
 
 def get_atlas_distance_dir(base_dir):

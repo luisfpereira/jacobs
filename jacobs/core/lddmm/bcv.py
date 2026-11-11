@@ -1,4 +1,4 @@
-from polpo.bcv.mesh import GroupedMeshRankSelection, GroupedMeshRankSelectionResult
+from polpo.bcv.mesh import GroupedMeshRankSelection
 from polpo.ext.numpy.io import load_indexed_arrays
 from polpo.workflow.lddmm_to_global.output import LddmmToGlobalOutput
 
@@ -25,18 +25,6 @@ def select_rank(struct_dir):
         load_global_deltas(output),
     )
     selection.result_.to_dir(get_rank_selection_dir(struct_dir))
-
-
-def load_rank_selection_results(outputs_dir):
-    """Load rank-selection results per experiment, keyed by long structure name."""
-    return {
-        struct: GroupedMeshRankSelectionResult.from_dir(
-            get_rank_selection_dir(struct_dir)
-        )
-        for struct, struct_dir in find_experiment_dirs(
-            outputs_dir, long_name=True
-        ).items()
-    }
 
 
 def load_reconstruction_eval_errors(outputs_dir, metric="squared_varifold"):

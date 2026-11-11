@@ -1,3 +1,11 @@
+"""Bi-cross-validation figures combining the Euclidean and LDDMM pipelines.
+
+After both pipelines' ``evaluation-figures``, with ``EUCLIDEAN_OUTPUTS_DIR``
+and ``LDDMM_OUTPUTS_DIR`` set (e.g. ``source config/local/bcv.sh``)::
+
+    jacobs bcv panel
+"""
+
 from pathlib import Path
 
 import click
@@ -26,16 +34,10 @@ def bcv():
     type=click.Path(path_type=Path, file_okay=False),
     help="Defaults to an artifacts directory next to the Euclidean outputs.",
 )
-@click.option(
-    "--normalize/--no-normalize",
-    default=True,
-    show_default=True,
-    help="Use errors relative to the atlas RMS distance, or raw errors.",
-)
-def panel(euclidean_outputs_dir, lddmm_outputs_dir, output_dir, normalize):
+def panel(euclidean_outputs_dir, lddmm_outputs_dir, output_dir):
     """Euclidean and geometric reconstruction errors over scaling factors."""
     from jacobs.core.bcv import (
-        get_reconstruction_eval_dir,
+        get_evaluation_figures_dir,
         make_errors_scaling_panel,
     )
 
@@ -46,11 +48,10 @@ def panel(euclidean_outputs_dir, lddmm_outputs_dir, output_dir, normalize):
 
     make_errors_scaling_panel(
         {
-            "Euclidean": get_reconstruction_eval_dir(
+            "Euclidean": get_evaluation_figures_dir(
                 euclidean_outputs_dir / "artifacts"
             ),
-            "Geometric": get_reconstruction_eval_dir(lddmm_outputs_dir / "artifacts"),
+            "Geometric": get_evaluation_figures_dir(lddmm_outputs_dir / "artifacts"),
         },
         output_dir / "bicv-rank-selection.pdf",
-        normalize=normalize,
     )
