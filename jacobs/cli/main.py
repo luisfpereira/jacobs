@@ -2,6 +2,7 @@ import click
 
 from jacobs.core.logging import configure_logging
 
+from .bcv import bcv
 from .enigma import enigma
 from .euclidean import euclidean
 from .fast import fast
@@ -29,3 +30,4 @@ cli.add_command(enigma)
 cli.add_command(fast)
 cli.add_command(euclidean)
 cli.add_command(lddmm)
+cli.add_command(bcv)

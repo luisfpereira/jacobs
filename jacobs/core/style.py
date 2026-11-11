@@ -11,6 +11,9 @@ COLORS = {
     "global": "#F8E081",
     "within": "#D995A1",
     "between": "#4D4DC1",
+    # hemispheres, matching the mixed effects models figure
+    "left": "#F8E081",
+    "right": "#DE815A",
 }
 
 
@@ -31,6 +34,14 @@ PAPER_RC = {
     "savefig.dpi": 200,
     # no tight bbox: the saved size is exactly figsize, so panels print unscaled
     "savefig.bbox": "standard",
+    # light outlines at print size; the median stays the strongest box line
+    "patch.linewidth": 0.6,
+    "boxplot.boxprops.linewidth": 0.6,
+    "boxplot.whiskerprops.linewidth": 0.6,
+    "boxplot.capprops.linewidth": 0.6,
+    "boxplot.medianprops.linewidth": 1.0,
+    "boxplot.flierprops.markersize": 2,
+    "boxplot.flierprops.markeredgewidth": 0.5,
 }
 
 PAPER_GRID = {
@@ -41,6 +52,9 @@ PAPER_GRID = {
     # tight padding around the shared legend, explicit space between rows
     "layout": {"h_pad": 0.04, "hspace": 0.15},
 }
+
+# single-axes figures filling one subfigure (e.g. BCV left/right comparisons)
+PAPER_FIGSIZE = figsize_from_textwidth(TEXTWIDTH, SUBFIG_FRACTION, aspect=0.75)
 
 PAPER_SUBFIGURES = {"width": SUBFIG_FRACTION, "n_cols": 2}
 

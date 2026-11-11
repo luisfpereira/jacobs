@@ -128,13 +128,25 @@ def reconstruction_eval(outputs_dir, overwrite, tasks, raise_on_error):
 @_options.outputs_dir
 @_options.figures_dir
 @_options.runner_options
+@click.option(
+    "--normalize/--no-normalize",
+    default=True,
+    show_default=True,
+    help="Plot errors relative to the atlas RMS distance, or raw errors.",
+)
+@click.option(
+    "--legend",
+    is_flag=True,
+    help="Add a legend to each figure instead of a single merged one.",
+)
 @_options.plotting
 def reconstruction_eval_figures(
-    outputs_dir, figures_dir, overwrite, tasks, raise_on_error
+    outputs_dir, figures_dir, normalize, legend, overwrite, tasks, raise_on_error
 ):
-    """Plot reconstruction errors and trend attenuation at the BCV rank.
+    """Plot reconstruction errors and trend scaling factor at the BCV rank.
 
-    Tasks: plot_errors, plot_normalized_errors, plot_attenuation. Defaults to all.
+    Tasks: plot_errors, plot_scaling, plot_legend, merge_errors_scaling.
+    Defaults to all.
     """
     from jacobs.core.bcv import ReconstructionEvalFiguresRunner
     from jacobs.core.euclidean import load_atlas_rms_distances
@@ -148,4 +160,6 @@ def reconstruction_eval_figures(
         partial(load_reconstruction_eval_errors, outputs_dir),
         partial(load_atlas_rms_distances, outputs_dir),
         partial(load_longitudinal_fidelity_slopes, outputs_dir),
+        normalize=normalize,
+        legend=legend,
     ).run(overwrite=overwrite, tasks=tasks or None, raise_on_error=raise_on_error)

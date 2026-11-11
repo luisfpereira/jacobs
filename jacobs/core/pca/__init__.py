@@ -156,7 +156,7 @@ def compute_log_volume_slope(times, meshes):
     return model.coef_[0]
 
 
-def compute_attenuation(input_slopes, reconstructed_slopes):
+def compute_scaling_factor(input_slopes, reconstructed_slopes):
     """Regression through the origin of reconstructed on input slopes."""
     return input_slopes @ reconstructed_slopes / (input_slopes @ input_slopes)
 
